@@ -1,9 +1,7 @@
-import csv
 
 import alpaca_trade_api as tradeapi
 import numpy as np
 import pandas as pd
-import talib
 
 from config import ALPACA_KEY_ID, ALPACA_SECRET_KEY, ALPACA_BASE_URL
 
