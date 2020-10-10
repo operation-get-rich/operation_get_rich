@@ -33,32 +33,24 @@ ticker_names = file.readlines()
 for ticker_name in ticker_names:
     tickers.append(ticker_name.strip())
 
-barset = api.get_barset(
-    symbols=','.join(tickers),
-    timeframe='1Min',
-    start='2019-01-01T03:00:00-05:00',
-    end='2020-10-05T15:00:00-05:00'
-)
 
-data = []
-for ticker in barset:
-    for bar in barset[ticker]:
-        data.append([ticker, bar.t, bar.o, bar.c, bar.l, bar.h, bar.v])
+start = 0
+while start < len(tickers):
+    end = min(len(tickers), start + 100)
+    barset = api.get_barset(
+        symbols=','.join(tickers[start:end]),
+        timeframe='1Min',
+        start='2019-01-01T03:00:00-05:00',
+        end='2020-10-05T15:00:00-05:00'
+    )
 
-data_np = np.array(data)
-df = pd.DataFrame(data_np, columns=['ticker', 'time', 'open', 'close', 'low', 'high', 'volume'])
+    data = []
+    for ticker in barset:
+        for bar in barset[ticker]:
+            data.append([ticker, bar.t, bar.o, bar.c, bar.l, bar.h, bar.v])
 
-df.to_csv(path_or_buf='./stock_price.csv')
+    data_np = np.array(data)
+    df = pd.DataFrame(data_np, columns=['ticker', 'time', 'open', 'close', 'low', 'high', 'volume'])
 
-# data = []
-# for bar in barset['A']:
-#     typical_price = (bar.h + bar.l + bar.c) / 3
-#     data.append([bar.t, bar.o, bar.c, bar.l, bar.h, typical_price,  bar.v])
-#
-# data_np = np.array(data)
-#
-# df = pd.DataFrame(data_np, columns=['time', 'open', 'close', 'low', 'high', 'typical_price', 'volume'])
-# df = df.groupby(df['time'].dt.date, group_keys=False).apply(vwap)
-#
-#
-# df.to_csv(path_or_buf='./stock_price.csv')
+    df.to_csv(path_or_buf='./stock_price.csv', mode='a')
+    start += 100
