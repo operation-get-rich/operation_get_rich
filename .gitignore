@@ -1,2 +1,7 @@
 .virtualenv/
 .idea/
+
+*.csv
+.stock_price.csv.swp
+stock_price.csv
+__pycache__/config.cpython-36.pyc

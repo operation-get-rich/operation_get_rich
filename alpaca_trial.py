@@ -31,10 +31,14 @@ ticker_names = file.readlines()
 for ticker_name in ticker_names:
     tickers.append(ticker_name.strip())
 
+print("Starting Download:", flush=True)
 
 start = 0
 while start < len(tickers):
     end = min(len(tickers), start + 100)
+    print("Current Iteration: ", start, flush=True)
+    print("Downloaded Tickers: ", tickers[start:end], flush=True)
+
     barset = api.get_barset(
         symbols=','.join(tickers[start:end]),
         timeframe='1Min',
