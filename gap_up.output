@@ -1,0 +1,18 @@
+nohup: ignoring input
+Loading Data:
+Starting Segmentation:
+sys:1: DtypeWarning: Columns (3,4,5,6,7) have mixed types. Specify dtype option on import or set low_memory=False.
+Traceback (most recent call last):
+  File "gap_up_stock_finders.py", line 56, in <module>
+    for index, row in reversed_stock_price_df.iterrows():
+  File "/home/grads/r/randyardywibowo/.local/lib/python3.6/site-packages/pandas/core/frame.py", line 908, in iterrows
+    for k, v in zip(self.index, self.values):
+  File "/home/grads/r/randyardywibowo/.local/lib/python3.6/site-packages/pandas/core/generic.py", line 5443, in values
+    return self._data.as_array(transpose=self._AXIS_REVERSED)
+  File "/home/grads/r/randyardywibowo/.local/lib/python3.6/site-packages/pandas/core/internals/managers.py", line 822, in as_array
+    arr = mgr._interleave()
+  File "/home/grads/r/randyardywibowo/.local/lib/python3.6/site-packages/pandas/core/internals/managers.py", line 846, in _interleave
+    result[rl.indexer] = blk.get_values(dtype)
+  File "/home/grads/r/randyardywibowo/.local/lib/python3.6/site-packages/pandas/core/internals/blocks.py", line 223, in get_values
+    return self.values.astype(object)
+MemoryError: Unable to allocate array with shape (7, 238542084) and data type object

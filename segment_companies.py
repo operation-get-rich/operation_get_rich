@@ -11,11 +11,7 @@ from utils import get_all_ticker_names
 print("Loading Data:", flush=True)
 filename = 'stock_price.csv'
 stock_price_df = pandas.read_csv(filename)  # type: DataFrame
-stock_price_df['open'] = pandas.to_numeric(stock_price_df['open'])
-stock_price_df['close'] = pandas.to_numeric(stock_price_df['close'])
-stock_price_df['low'] = pandas.to_numeric(stock_price_df['low'])
-stock_price_df['high'] = pandas.to_numeric(stock_price_df['high'])
-stock_price_df['volume'] = pandas.to_numeric(stock_price_df['volume'])
+
 
 def get_date(time_str):
     # type: (AnyStr) -> datetime
@@ -46,7 +42,7 @@ def create_dir(path):
 def is_gapped_up(open_price, close_price):
     return (open_price - close_price) / close_price > 0.15
 
-# reversed_stock_price_df = stock_price_df.iloc[::-1]
+reversed_stock_price_df = stock_price_df.iloc[::-1]
 
 segments = []  # [('AAPL', '01/17/20'), ('AAPL', '01/18/20')]
 
@@ -57,9 +53,7 @@ close_price = None
 cummulative_volume = 0
 
 print("Starting Segmentation:", flush=True)
-for index in reversed(range(len(stock_price_df.index))):
-# for index, row in reversed_stock_price_df.iterrows():
-    row = stock_price_df.loc[index]
+for index, row in reversed_stock_price_df.iterrows():
     # Reset everything when new ticker arrives
     if current_ticker is None or row.ticker != previous_ticker:
         current_ticker = row.ticker
@@ -75,8 +69,8 @@ for index in reversed(range(len(stock_price_df.index))):
         cummulative_volume += row.volume
 
     if index - 1 > 0:
-        if open_price is not None and get_date(row.time) > get_date(stock_price_df.loc[index - 1].time):
-            close_price = stock_price_df.loc[index - 1].open
+        if open_price is not None and get_date(row.time) > get_date(reversed_stock_price_df.loc[index - 1].time):
+            close_price = reversed_stock_price_df.loc[index - 1].open
             if is_gapped_up(open_price, close_price) and cummulative_volume >= 1e+06:
                 segments.append((current_ticker, get_date(row.time)))
                 print("Gapped Up: ", ticker_segment, get_date(row.time), flush=True)
