@@ -1,4 +1,3 @@
-
 import alpaca_trade_api as tradeapi
 import numpy as np
 import pandas as pd
@@ -34,6 +33,8 @@ for ticker_name in ticker_names:
 print("Starting Download:", flush=True)
 
 start = 0
+start_date = '2020-10-05T03:00:00-05:00'
+end_date = '2020-10-09T15:00:00-05:00'
 while start < len(tickers):
     end = min(len(tickers), start + 100)
     print("Current Iteration: ", start, flush=True)
@@ -42,8 +43,8 @@ while start < len(tickers):
     barset = api.get_barset(
         symbols=','.join(tickers[start:end]),
         timeframe='1Min',
-        start='2019-01-01T03:00:00-05:00',
-        end='2020-10-05T15:00:00-05:00'
+        start=start_date,
+        end=end_date
     )
 
     data = []
