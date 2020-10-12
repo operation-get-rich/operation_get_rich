@@ -8,6 +8,9 @@ from pandas import DataFrame
 
 from utils import get_all_ticker_names
 
+GAP_UP_THRESHOLD = 0.15
+VOLUME_THRESHOLD = 1e+06
+
 print("Loading Data:", flush=True)
 filename = 'stock_price.csv'
 stock_price_df = pandas.read_csv(filename)  # type: DataFrame
@@ -16,6 +19,7 @@ stock_price_df['close'] = pandas.to_numeric(stock_price_df['close'])
 stock_price_df['low'] = pandas.to_numeric(stock_price_df['low'])
 stock_price_df['high'] = pandas.to_numeric(stock_price_df['high'])
 stock_price_df['volume'] = pandas.to_numeric(stock_price_df['volume'])
+
 
 def get_date(time_str):
     # type: (AnyStr) -> datetime
@@ -44,7 +48,8 @@ def create_dir(path):
 
 
 def is_gapped_up(open_price, close_price):
-    return (open_price - close_price) / close_price > 0.15
+    return (open_price - close_price) / close_price > GAP_UP_THRESHOLD
+
 
 # reversed_stock_price_df = stock_price_df.iloc[::-1]
 
@@ -58,7 +63,6 @@ cummulative_volume = 0
 
 print("Starting Segmentation:", flush=True)
 for index in reversed(range(len(stock_price_df.index))):
-# for index, row in reversed_stock_price_df.iterrows():
     row = stock_price_df.loc[index]
     # Reset everything when new ticker arrives
     if current_ticker is None or row.ticker != previous_ticker:
@@ -67,6 +71,7 @@ for index in reversed(range(len(stock_price_df.index))):
         close_price = None
         cummulative_volume = 0
     print("Current Ticker: ", current_ticker, flush=True)
+    print("Current Index: ", index, flush=True)
 
     if get_date_time(row.time).hour < 10 and open_price is None:
         open_price = row.open
@@ -77,9 +82,9 @@ for index in reversed(range(len(stock_price_df.index))):
     if index - 1 > 0:
         if open_price is not None and get_date(row.time) > get_date(stock_price_df.loc[index - 1].time):
             close_price = stock_price_df.loc[index - 1].open
-            if is_gapped_up(open_price, close_price) and cummulative_volume >= 1e+06:
+            if is_gapped_up(open_price, close_price) and cummulative_volume >= VOLUME_THRESHOLD:
                 segments.append((current_ticker, get_date(row.time)))
-                print("Gapped Up: ", ticker_segment, get_date(row.time), flush=True)
+                print("Gapped Up: ", current_ticker, get_date(row.time), flush=True)
 
             open_price = None
             close_price = None
