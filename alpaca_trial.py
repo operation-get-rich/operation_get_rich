@@ -2,9 +2,12 @@
 import alpaca_trade_api as tradeapi
 import numpy as np
 import pandas as pd
+import os
 
 from config import ALPACA_KEY_ID, ALPACA_SECRET_KEY, ALPACA_BASE_URL
 
+if os.path.isfile("./stock_price.csv"):
+    os.remove("./stock_price.csv")
 
 def vwap(df):
     # https://stackoverflow.com/questions/44854512/how-to-calculate-vwap-volume-weighted-average-price-using-groupby-and-apply

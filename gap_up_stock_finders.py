@@ -11,11 +11,11 @@ from utils import get_all_ticker_names
 print("Loading Data:", flush=True)
 filename = 'stock_price.csv'
 stock_price_df = pandas.read_csv(filename)  # type: DataFrame
-stock_price_df['open'] = pandas.to_numeric(stock_price_df['open'])
-stock_price_df['close'] = pandas.to_numeric(stock_price_df['close'])
-stock_price_df['low'] = pandas.to_numeric(stock_price_df['low'])
-stock_price_df['high'] = pandas.to_numeric(stock_price_df['high'])
-stock_price_df['volume'] = pandas.to_numeric(stock_price_df['volume'])
+stock_price_df['open'] = pandas.to_numeric(stock_price_df['open'], errors='raise')
+stock_price_df['close'] = pandas.to_numeric(stock_price_df['close'], errors='raise')
+stock_price_df['low'] = pandas.to_numeric(stock_price_df['low'], errors='raise')
+stock_price_df['high'] = pandas.to_numeric(stock_price_df['high'], errors='raise')
+stock_price_df['volume'] = pandas.to_numeric(stock_price_df['volume'], errors='raise')
 
 def get_date(time_str):
     # type: (AnyStr) -> datetime
@@ -79,7 +79,7 @@ for index in reversed(range(len(stock_price_df.index))):
             close_price = stock_price_df.loc[index - 1].open
             if is_gapped_up(open_price, close_price) and cummulative_volume >= 1e+06:
                 segments.append((current_ticker, get_date(row.time)))
-                print("Gapped Up: ", ticker_segment, get_date(row.time), flush=True)
+                print("Gapped Up: ", current_ticker, get_date(row.time), flush=True)
 
             open_price = None
             close_price = None
