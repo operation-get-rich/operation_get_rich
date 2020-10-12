@@ -10,15 +10,16 @@ from utils import get_all_ticker_names
 
 GAP_UP_THRESHOLD = 0.15
 VOLUME_THRESHOLD = 1e+06
+RAW_STOCK_PRICE_FILENAME = 'stock_price_small.csv'
+GAPED_UP_STOCKS_DIR_NAME = 'gaped_up_stocks'
 
 print("Loading Data:", flush=True)
-filename = 'stock_price.csv'
-stock_price_df = pandas.read_csv(filename)  # type: DataFrame
-stock_price_df['open'] = pandas.to_numeric(stock_price_df['open'], errors='raise')
-stock_price_df['close'] = pandas.to_numeric(stock_price_df['close'], errors='raise')
-stock_price_df['low'] = pandas.to_numeric(stock_price_df['low'], errors='raise')
-stock_price_df['high'] = pandas.to_numeric(stock_price_df['high'], errors='raise')
-stock_price_df['volume'] = pandas.to_numeric(stock_price_df['volume'], errors='raise')
+stock_price_df = pandas.read_csv(RAW_STOCK_PRICE_FILENAME)  # type: DataFrame
+stock_price_df['open'] = pandas.to_numeric(stock_price_df['open'])
+stock_price_df['close'] = pandas.to_numeric(stock_price_df['close'])
+stock_price_df['low'] = pandas.to_numeric(stock_price_df['low'])
+stock_price_df['high'] = pandas.to_numeric(stock_price_df['high'])
+stock_price_df['volume'] = pandas.to_numeric(stock_price_df['volume'])
 
 
 def get_date(time_str):
@@ -96,6 +97,8 @@ for index in reversed(range(len(stock_price_df.index))):
 
 stock_price_df['just_date'] = stock_price_df.apply(lambda row: get_date(row.time), axis=1)
 
+create_dir('./%s' % GAPED_UP_STOCKS_DIR_NAME)
+
 for ticker_segment, date_segment in segments:
     print("Writing Ticker: ", ticker_segment, flush=True)
     get_date_string(date_segment)
@@ -106,6 +109,6 @@ for ticker_segment, date_segment in segments:
     the_segment = the_segment.drop('just_date', axis=1)
     the_segment = the_segment.drop(the_segment.columns[0], axis=1)
 
-    the_dir = create_dir('./gaped_up_stocks/{}'.format(ticker_segment))
+    the_dir = create_dir('./{}/{}'.format(GAPED_UP_STOCKS_DIR_NAME, ticker_segment))
 
     the_segment.to_csv(path_or_buf='{}/{}_{}'.format(the_dir, ticker_segment, date_segment), index=False)
