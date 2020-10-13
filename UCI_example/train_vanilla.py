@@ -9,8 +9,8 @@ import torch
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
 
-from VanillaGRU import VanillaGRU
-from uci_har import UciHarDataset
+from UCI_example.VanillaGRU import VanillaGRU
+from UCI_example.uci_har import UciHarDataset
 
 import multiprocessing
 
