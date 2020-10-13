@@ -36,8 +36,8 @@ for ticker_name in ticker_names:
 print("Starting Download:", flush=True)
 
 start = 0
-start_date = '2020-10-05T03:00:00-05:00'
-end_date = '2020-10-09T15:00:00-05:00'
+start_date = '2019-01-01T00:00:00-05:00'
+end_date = '2020-10-11T23:59:00-05:00'
 while start < len(tickers):
     end = min(len(tickers), start + 100)
     print("Current Iteration: ", start, flush=True)
@@ -58,5 +58,5 @@ while start < len(tickers):
     data_np = np.array(data)
     df = pd.DataFrame(data_np, columns=['ticker', 'time', 'open', 'close', 'low', 'high', 'volume'])
 
-    df.to_csv(path_or_buf='./stock_price.csv', mode='a')
+    df.to_csv(path_or_buf='./raw_data/stock_price' + str(start) + '.csv')
     start += 100
