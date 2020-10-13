@@ -8,10 +8,10 @@ from pandas import DataFrame
 
 from utils import get_all_ticker_names
 
-GAP_UP_THRESHOLD = 0.15
-VOLUME_THRESHOLD = 1e+06
+GAP_UP_THRESHOLD = 0.10
+VOLUME_THRESHOLD = 1e+05
 RAW_STOCK_PRICE_DIR = 'raw_data'
-GAPED_UP_STOCKS_DIR_NAME = 'gaped_up_stocks'
+GAPED_UP_STOCKS_DIR_NAME = 'gaped_up_stocks_early_volume_1e5_gap_10'
 
 def get_date(time_str):
     # type: (AnyStr) -> datetime
@@ -72,6 +72,8 @@ for stock_file in raw_stock_list:
         if get_date_time(row.time).hour < 10 and open_price is None:
             open_price = row.open
 
+        # if close_price is not None:
+        #     cummulative_volume += row.volume
         if open_price is not None:
             cummulative_volume += row.volume
 
