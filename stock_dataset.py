@@ -62,8 +62,13 @@ class StockDataset(torch.utils.data.Dataset):
                  np.zeros((SEQUENCE_LENGTH - selected_segment_length,
                            selected_segment_np.shape[1]))]
             )
+            return selected_segment_np, selected_segment_length
+        else:
+            max_start = selected_segment_length - SEQUENCE_LENGTH
+            start = random.randint(0, max_start)
+            selected_segment_np = selected_segment_np[start: start + SEQUENCE_LENGTH, :]
 
-        return selected_segment_np, selected_segment_length
+            return selected_segment_np, SEQUENCE_LENGTH
 
         # TODO: Add back once we have the mean and std
         # return (selected_segment_df - STOCK_DATA_MEAN) / STOCK_DATA_STD

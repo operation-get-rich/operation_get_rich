@@ -4,13 +4,12 @@ import time
 
 import numpy as np
 
-
 import torch
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
 
-from VanillaGRU import VanillaGRU
-from uci_har import UciHarDataset
+from UCI_example.VanillaGRU import VanillaGRU
+from UCI_example.uci_har import UciHarDataset
 
 import multiprocessing
 
@@ -25,9 +24,9 @@ parser.add_argument('--save', type=str, default='Train', help='experiment name')
 args = parser.parse_args()
 
 
-def train(model,
-          train_loader,
-          valid_loader,
+def train(model,  # type: VanillaGRU
+          train_loader,  # type: DataLoader
+          valid_loader,  # type: DataLoader
           num_epochs=30000,
           patience=30000,
           min_delta=0.00001):
@@ -68,15 +67,18 @@ def train(model,
 
         for data in train_loader:
             inputs, labels = data
+            inputs  # shape: 10, 200, 561
+            labels  # shape; 10, 200, 1
             inputs = inputs.float()
 
-            labels = labels.long()
-            labels = labels.permute(1, 0)  # seq_length x batch
-            labels = labels.flatten()  # seq_length * batch
+            labels = labels.long()  # shape; 10, 200, 1
+            labels = labels.permute(1, 0)  # shape: 200, 1, 10
+            labels = labels.flatten()  # shape: 2000, 1
 
             if inputs.shape[0] != batch_size:
                 continue
 
+            # I'm guessing we need to create the Variable to construct the computational graph
             if use_gpu:
                 inputs, labels = Variable(inputs.cuda()), Variable(labels.cuda())
             else:
@@ -84,10 +86,13 @@ def train(model,
 
             model.zero_grad()
 
-            outputs = model(inputs)
-            outputs = torch.cat(outputs)  # seq_length * batch x num_classes
+            outputs = model(inputs)  # shape: 200, 10, 6
+            outputs = torch.cat(outputs)  # shape: 2000, 6
 
-            loss_train = loss(outputs, labels)
+            loss_train = loss(
+                outputs,  # shape: 2000, 6
+                labels  # shape: 2000, 1
+            )
             loss_train = loss_train
 
             losses_train.append(loss_train.data)
@@ -106,10 +111,10 @@ def train(model,
                 valid_dataloader_iter = iter(valid_loader)
                 inputs_val, labels_val = next(valid_dataloader_iter)
 
-            inputs_val = inputs_val.float()
-            labels_val = labels_val.long()
-            labels_val = labels_val.permute(1, 0)  # seq_length x batch
-            labels_val = labels_val.flatten()  # seq_length * batch
+            inputs_val = inputs_val.float()  # shape: 10, 200, 561
+            labels_val = labels_val.long()  # shape; 10, 200, 1
+            labels_val = labels_val.permute(1, 0)  # shape: 200, 1, 10
+            labels_val = labels_val.flatten()  # shape: 2000, 1
 
             if use_gpu:
                 inputs_val, labels_val = Variable(inputs_val.cuda()), Variable(labels_val.cuda())
@@ -145,6 +150,7 @@ def train(model,
             if avg_losses_epoch_valid < min_loss_epoch_valid:
                 min_loss_epoch_valid = avg_losses_epoch_valid
         else:
+            # If the `avg_losses_epoch_valid` is better by `min_delta`, the current_model is the best model
             if min_loss_epoch_valid - avg_losses_epoch_valid > min_delta:
                 is_best_model = 1
                 best_model = model
