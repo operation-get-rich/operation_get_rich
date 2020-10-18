@@ -8,7 +8,7 @@ import torch
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
 
-from UCI_example.VanillaGRU import VanillaGRU
+from VanillaGRU import VanillaGRU
 from stock_dataset import StockDataset
 
 import multiprocessing
@@ -23,19 +23,29 @@ parser.add_argument('--gpu', type=int, default=0, help='gpu device id')
 parser.add_argument('--save', type=str, default='Train', help='experiment name')
 args = parser.parse_args()
 
+MODEL_OUTPUT_SIZE = 4  # The model predicts: open, close, high, & low of the next bar
 
-def train(model,
-          train_loader,
-          valid_loader,
-          num_epochs=30000,
-          patience=30000,
-          min_delta=0.00001):
+
+def train(
+        model,  # type: VanillaGRU
+        train_loader,  # type: DataLoader
+        test_loader,  # type: DataLoader
+        num_epochs=30000,  # type: int
+        patience=30000,  # type: int
+        min_delta=0.00001  # type: int
+):
+    # type: (...) -> NotImplemented
+    """
+    TODO: Hyperparameter to experiemnts:
+        - The loss function (MSELoss, L1, etc)
+        - The optimizer (RMS, Adams...)
+    """
     print('Model Structure: ', model)
     print('Start Training ... ')
 
     # model.cuda()
 
-    loss = torch.nn.CrossEntropyLoss()
+    loss = torch.nn.MSELoss(reduction='sum')
 
     learning_rate = 0.0001
     optimizer = torch.optim.RMSprop(model.parameters(), lr=learning_rate, alpha=0.99)
@@ -50,7 +60,11 @@ def train(model,
     cur_time = time.time()
     pre_time = time.time()
 
-    inputs, labels = next(iter(train_loader))
+    inputs, original_sequence_lengths = next(iter(train_loader))
+
+    inputs  # shape: 10, 390, 7
+    original_sequence_lengths  # shape: 10, 1
+
     [batch_size, seq_length, input_size] = inputs.size()
 
     # Variables for Early Stopping
@@ -60,18 +74,23 @@ def train(model,
 
         trained_number = 0
 
-        valid_dataloader_iter = iter(valid_loader)
+        valid_dataloader_iter = iter(test_loader)
 
         losses_epoch_train = []
         losses_epoch_valid = []
 
         for data in train_loader:
-            inputs, labels = data
-            inputs = inputs.float()
+            inputs, original_sequence_lengths = data
+            inputs  # shape: (10, 390, 7)
+            original_sequence_lengths  # shape: 10, 1
 
-            labels = labels.long()
-            labels = labels.permute(1, 0)  # seq_length x batch
-            labels = labels.flatten()  # seq_length * batch
+            inputs = inputs.float()  # shape: 10, 390, 7
+
+            # labels contains open, close, low, high
+            labels = inputs[:, 1:, :4]  # shape: 10, 389, 4
+            labels = labels.reshape(labels.shape[0] * labels.shape[1], 4)  # shape: 3890, 4
+
+            inputs = inputs[:, :-1, :]  # shape: 10, 389, 7
 
             if inputs.shape[0] != batch_size:
                 continue
@@ -83,11 +102,34 @@ def train(model,
 
             model.zero_grad()
 
-            outputs = model(inputs)
-            outputs = torch.cat(outputs)  # seq_length * batch x num_classes
+            outputs = model(inputs)  # shape: 389*, 10, 4
+            outputs = torch.cat(outputs)  # shape: 3890, 4
 
-            loss_train = loss(outputs, labels)
-            loss_train = loss_train
+            outputs  # shape: 3890, 4
+            labels  # shape: 3890, 4
+
+            loss_train = 0
+            total_sequence_length = 0
+            for i, osl in enumerate(original_sequence_lengths):
+                """
+                    outputs[0:0+osl]
+                    outputs[389: 389+osl]
+                    outputs[2*389: 2*389+osl]
+                    ...
+                """
+                total_sequence_length += osl
+                current_outputs = outputs[i * 389: i * 389 + osl, :]
+                current_outputs = torch.flatten(current_outputs)
+
+                current_labels = labels[i * 389: i * 389 + osl, :]
+                current_labels = torch.flatten(current_labels)
+
+                loss_train += loss(
+                    current_outputs,
+                    current_labels
+                )
+
+            loss_train /= outputs.shape[1] * total_sequence_length
 
             losses_train.append(loss_train.data)
             losses_epoch_train.append(loss_train.data)
@@ -98,11 +140,12 @@ def train(model,
 
             optimizer.step()
 
+            # TODO: Do the same as above for test
             # Validation
             try:
                 inputs_val, labels_val = next(valid_dataloader_iter)
             except StopIteration:
-                valid_dataloader_iter = iter(valid_loader)
+                valid_dataloader_iter = iter(test_loader)
                 inputs_val, labels_val = next(valid_dataloader_iter)
 
             inputs_val = inputs_val.float()
@@ -182,17 +225,17 @@ if __name__ == "__main__":
     # Create directories
     args.save = '{}-{}'.format(args.save, time.strftime("%Y%m%d-%H%M%S"))
     create_dir(args.save)
-    torch.cuda.set_device(args.gpu)
+    # torch.cuda.set_device(args.gpu)
     torch.cuda.set_device(-1)
 
     train_data = StockDataset(
-        data_folder='./gapped_up_stocks',
+        data_folder='./gaped_up_stocks',
         split='train',
         should_add_technical_indicator=True
     )
 
     test_data = StockDataset(
-        data_folder='./gapped_up_stocks',
+        data_folder='./gaped_up_stocks',
         split='test',
         should_add_technical_indicator=True
     )
@@ -200,12 +243,16 @@ if __name__ == "__main__":
     train_loader = DataLoader(train_data, num_workers=1, shuffle=True, batch_size=10)
     test_loader = DataLoader(test_data, num_workers=1, shuffle=True, batch_size=20)
 
-    inputs, labels = next(iter(train_loader))
+    inputs, sequence_length = next(iter(train_loader))
+
+    inputs, original_sequence_lengths = next(iter(train_loader))
+    inputs  # shape: 10, 390, 7
     [batch_size, seq_length, num_features] = inputs.size()
 
-    inputs, labels = next(iter(train_loader))
-    [batch_size, seq_length, num_features] = inputs.size()
-
-    model = VanillaGRU(input_size=num_features, hidden_size=5 * num_features, output_size=num_classes)
+    model = VanillaGRU(
+        input_size=num_features,
+        hidden_size=5 * num_features,
+        output_size=MODEL_OUTPUT_SIZE
+    )
 
     best_grud, losses_grud = train(model, train_loader, test_loader)
