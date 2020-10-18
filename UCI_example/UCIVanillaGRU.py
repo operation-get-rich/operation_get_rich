@@ -5,9 +5,9 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 
 
-class VanillaGRU(nn.Module):
+class UCIVanillaGRU(nn.Module):
     def __init__(self, input_size, hidden_size, output_size):
-        super(VanillaGRU, self).__init__()
+        super(UCIVanillaGRU, self).__init__()
 
         self.input_size = input_size  # 561
         self.hidden_size = hidden_size  # 2805
