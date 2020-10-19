@@ -13,19 +13,31 @@ STOCK_DATA_STD = 0.0
 TECHNICAL_INDICATOR_PERIOD = 14
 SEQUENCE_LENGTH = 390
 
+# From gaped_up_stocks_early_volume_1e5_gap_10_statistics.csv
+VOLUME_MEAN = 5236.079151848999
+VOLUME_STD = 17451.76183378195
+
+OPEN_COLUMN_INDEX = 0
+CLOSE_COLUMN_INDEX = 1
+LOW_COLUMN_INDEX = 2
+HIGH_COLUMN_INDEX = 3
+VOLUME_COLUMN_INDEX = 4
+VWAP_COLUMN_INDEX = 5
+EMA_COLUMN_INDEX = 6
+
 
 class StockDataset(torch.utils.data.Dataset):
     """
-    This is the main class that calculates the spectrogram and returns the
-    spectrogram, audio pair.
+    Responsible to return batches of `gaped_up_stocks_early_volume_1e5_gap_10` stock data segments.
     """
 
-    def __init__(self, data_folder, split='train', should_add_technical_indicator=False):
+    def __init__(self, data_folder, split, should_add_technical_indicator=False):
         self.segment_list = []
         company_directories = os.listdir(data_folder)
         for company in company_directories:
             segments = os.listdir(os.path.join(data_folder, company))
-            self.segment_list += [os.path.join(data_folder, company, segment) for segment in segments]
+            for segment in segments:
+                self.segment_list.append(os.path.join(data_folder, company, segment))
         random.seed(69420)
         random.shuffle(self.segment_list)
 
@@ -55,6 +67,9 @@ class StockDataset(torch.utils.data.Dataset):
 
         selected_segment_np = selected_segment_df[TECHNICAL_INDICATOR_PERIOD:].to_numpy()
 
+        self._normalize_price_data_using_percent_change(selected_segment_np)
+        self._normalize_volume(selected_segment_np)
+
         selected_segment_length = selected_segment_np.shape[0]
         if selected_segment_length < SEQUENCE_LENGTH:
             selected_segment_np = np.vstack(
@@ -70,8 +85,45 @@ class StockDataset(torch.utils.data.Dataset):
 
             return selected_segment_np, SEQUENCE_LENGTH
 
-        # TODO: Add back once we have the mean and std
-        # return (selected_segment_df - STOCK_DATA_MEAN) / STOCK_DATA_STD
+    def _normalize_volume(self, selected_segment_np):
+        selected_segment_np[:, VOLUME_COLUMN_INDEX] -= VOLUME_MEAN
+        selected_segment_np[:, VOLUME_COLUMN_INDEX] /= VOLUME_STD
+
+    def _normalize_price_data_using_percent_change(self, selected_segment_np):
+        anchor_open_price = selected_segment_np[0, OPEN_COLUMN_INDEX]
+        anchor_close_price = selected_segment_np[0, CLOSE_COLUMN_INDEX]
+        anchor_low_price = selected_segment_np[0, LOW_COLUMN_INDEX]
+        anchor_high_price = selected_segment_np[0, HIGH_COLUMN_INDEX]
+        anchor_vwap = selected_segment_np[0, VWAP_COLUMN_INDEX]
+        anchor_ema = selected_segment_np[0, EMA_COLUMN_INDEX]
+
+        for i in range(1, selected_segment_np.shape[0]):
+            selected_segment_np[i, OPEN_COLUMN_INDEX] = self._compute_percent_change(
+                anchor_open_price,
+                selected_segment_np[i, OPEN_COLUMN_INDEX])
+
+            selected_segment_np[i, CLOSE_COLUMN_INDEX] = self._compute_percent_change(
+                anchor_close_price,
+                selected_segment_np[i, CLOSE_COLUMN_INDEX])
+
+            selected_segment_np[i, LOW_COLUMN_INDEX] = self._compute_percent_change(
+                anchor_low_price,
+                selected_segment_np[i, LOW_COLUMN_INDEX])
+
+            selected_segment_np[i, HIGH_COLUMN_INDEX] = self._compute_percent_change(
+                anchor_high_price,
+                selected_segment_np[i, HIGH_COLUMN_INDEX])
+
+            selected_segment_np[i, VWAP_COLUMN_INDEX] = self._compute_percent_change(
+                anchor_vwap,
+                selected_segment_np[i, VWAP_COLUMN_INDEX])
+
+            selected_segment_np[i, EMA_COLUMN_INDEX] = self._compute_percent_change(
+                anchor_ema,
+                selected_segment_np[i, EMA_COLUMN_INDEX])
+
+    def _compute_percent_change(self, p1, p2):
+        return (p2 / p1) - 1
 
     def __len__(self):
         return len(self.segment_list)
