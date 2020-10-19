@@ -97,7 +97,7 @@ class StockDataset(torch.utils.data.Dataset):
         anchor_vwap = selected_segment_np[0, VWAP_COLUMN_INDEX]
         anchor_ema = selected_segment_np[0, EMA_COLUMN_INDEX]
 
-        for i in range(1, selected_segment_np.shape[0]):
+        for i in range(0, selected_segment_np.shape[0]):
             selected_segment_np[i, OPEN_COLUMN_INDEX] = self._compute_percent_change(
                 anchor_open_price,
                 selected_segment_np[i, OPEN_COLUMN_INDEX])
