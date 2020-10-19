@@ -25,11 +25,50 @@ args = parser.parse_args()
 
 MODEL_OUTPUT_SIZE = 4  # The model predicts: open, close, high, & low of the next bar
 
+def compute_loss(outputs, targets, original_seq_len, batch_seq_length, loss):
+    loss_train = 0
+    total_sequence_length = 0
+    for i, osl in enumerate(original_seq_len):
+        total_sequence_length += osl
+        current_outputs = outputs[i * batch_seq_length-1: i * batch_seq_length-1 + osl, :]
+        current_outputs = torch.flatten(current_outputs)
+
+        current_labels = targets[i * batch_seq_length-1: i * batch_seq_length-1 + osl, :]
+        current_labels = torch.flatten(current_labels)
+
+        loss_train += loss(
+            current_outputs,
+            current_labels
+        )
+    output_size = outputs.shape[1]
+    loss_train /= output_size * total_sequence_length
+
+    return loss_train
+
+def push_data(data, model, use_gpu=True):
+    inputs, original_sequence_lengths = data
+    inputs = inputs.float()
+
+    # labels contains open, close, low, high
+    targets = inputs[:, 1:, :4]  # batch_size x  seq_len-1 x output_size
+    targets = targets.reshape(targets.shape[0] * targets.shape[1], 4)  # batch_size * seq_len-1 x output_size
+
+    inputs = inputs[:, :-1, :]  # batch_size x  seq_len-1 x input_size
+
+    if use_gpu:
+        inputs, targets = Variable(inputs.cuda()), Variable(targets.cuda())
+    else:
+        inputs, targets = Variable(inputs), Variable(targets)
+
+    outputs = model(inputs)  # batch_size x seq_len-1 x output_size
+    outputs = torch.cat(outputs)  # batch_size * seq_len-1 x output_size
+
+    return outputs, targets
 
 def train(
         model,  # type: VanillaGRU
         train_loader,  # type: DataLoader
-        test_loader,  # type: DataLoader
+        valid_loader,  # type: DataLoader
         num_epochs=30000,  # type: int
         patience=30000,  # type: int
         min_delta=0.00001  # type: int
@@ -62,115 +101,49 @@ def train(
 
     inputs, original_sequence_lengths = next(iter(train_loader))
 
-    inputs  # shape: 10, 390, 7
-    original_sequence_lengths  # shape: 10, 1
-
     [batch_size, seq_length, input_size] = inputs.size()
+    outputs = model(inputs)
+    output_size = outputs.shape[-1]
 
     # Variables for Early Stopping
     is_best_model = 0
     patient_epoch = 0
     for epoch in range(num_epochs):
-
-        trained_number = 0
-
-        valid_dataloader_iter = iter(test_loader)
+        valid_dataloader_iter = iter(valid_loader)
 
         losses_epoch_train = []
         losses_epoch_valid = []
 
         for data in train_loader:
             inputs, original_sequence_lengths = data
-            inputs  # shape: (10, 390, 7)
-            original_sequence_lengths  # shape: 10, 1
-
-            inputs = inputs.float()  # shape: 10, 390, 7
-
-            # labels contains open, close, low, high
-            labels = inputs[:, 1:, :4]  # shape: 10, 389, 4
-            labels = labels.reshape(labels.shape[0] * labels.shape[1], 4)  # shape: 3890, 4
-
-            inputs = inputs[:, :-1, :]  # shape: 10, 389, 7
-
             if inputs.shape[0] != batch_size:
                 continue
 
-            if use_gpu:
-                inputs, labels = Variable(inputs.cuda()), Variable(labels.cuda())
-            else:
-                inputs, labels = Variable(inputs), Variable(labels)
-
-            model.zero_grad()
-
-            outputs = model(inputs)  # shape: 389*, 10, 4
-            outputs = torch.cat(outputs)  # shape: 3890, 4
-
-            outputs  # shape: 3890, 4
-            labels  # shape: 3890, 4
-
-            loss_train = 0
-            total_sequence_length = 0
-            for i, osl in enumerate(original_sequence_lengths):
-                """
-                    outputs[0:0+osl]
-                    outputs[389: 389+osl]
-                    outputs[2*389: 2*389+osl]
-                    ...
-                """
-                total_sequence_length += osl
-                current_outputs = outputs[i * 389: i * 389 + osl, :]
-                current_outputs = torch.flatten(current_outputs)
-
-                current_labels = labels[i * 389: i * 389 + osl, :]
-                current_labels = torch.flatten(current_labels)
-
-                loss_train += loss(
-                    current_outputs,
-                    current_labels
-                )
-
-            loss_train /= outputs.shape[1] * total_sequence_length
+            outputs, targets = push_data(data, model)
+            loss_train = compute_loss(outputs, targets, original_sequence_lengths, seq_length, loss)
 
             losses_train.append(loss_train.data)
             losses_epoch_train.append(loss_train.data)
-
+            
+            model.zero_grad()
             optimizer.zero_grad()
-
             loss_train.backward()
-
             optimizer.step()
 
             # TODO: Do the same as above for test
             # Validation
             try:
-                inputs_val, labels_val = next(valid_dataloader_iter)
+                data_val = next(valid_dataloader_iter)
             except StopIteration:
-                valid_dataloader_iter = iter(test_loader)
-                inputs_val, labels_val = next(valid_dataloader_iter)
+                valid_dataloader_iter = iter(valid_loader)
+                data_val = next(valid_dataloader_iter)
 
-            inputs_val = inputs_val.float()
-            labels_val = labels_val.long()
-            labels_val = labels_val.permute(1, 0)  # seq_length x batch
-            labels_val = labels_val.flatten()  # seq_length * batch
+            inputs_val, original_sequence_lengths_val = data_val
+            outputs_val, targets_val = push_data(data_val, model)
 
-            if use_gpu:
-                inputs_val, labels_val = Variable(inputs_val.cuda()), Variable(labels_val.cuda())
-            else:
-                inputs_val, labels_val = Variable(inputs_val), Variable(labels_val)
-
-            model.zero_grad()
-
-            outputs_val = model(inputs_val)
-            outputs_val = torch.cat(outputs_val)  # seq_length * batch x num_classes
-
-            loss_valid = loss(outputs_val, labels_val)
-            loss_valid = loss_valid
-
+            loss_valid = compute_loss(outputs_val, targets_val, original_sequence_lengths_val, seq_length, loss)
             losses_valid.append(loss_valid.data)
             losses_epoch_valid.append(loss_valid.data)
-
-            # output
-            trained_number += 1
 
         torch.save(model.state_dict(), args.save + "/latest_model.pt")
 
