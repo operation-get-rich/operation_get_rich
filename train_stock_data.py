@@ -25,15 +25,15 @@ args = parser.parse_args()
 
 MODEL_OUTPUT_SIZE = 4  # The model predicts: open, close, high, & low of the next bar
 
-def compute_loss(outputs, targets, original_seq_len, batch_seq_length, loss):
+def compute_loss(outputs, targets, original_seq_length, batch_seq_length, loss):
     loss_train = 0
     total_sequence_length = 0
-    for i, osl in enumerate(original_seq_len):
+    for i, osl in enumerate(original_seq_length):
         total_sequence_length += osl
-        current_outputs = outputs[i * batch_seq_length-1: i * batch_seq_length-1 + osl, :]
+        current_outputs = outputs[i, 0 : osl, :]
         current_outputs = torch.flatten(current_outputs)
 
-        current_labels = targets[i * batch_seq_length-1: i * batch_seq_length-1 + osl, :]
+        current_labels = targets[i, 0 : osl, :]
         current_labels = torch.flatten(current_labels)
 
         loss_train += loss(
@@ -45,14 +45,13 @@ def compute_loss(outputs, targets, original_seq_len, batch_seq_length, loss):
 
     return loss_train
 
-def push_data(data, model, use_gpu=True):
+def feed_data(data, model):
+    use_gpu = torch.cuda.is_available()
     inputs, original_sequence_lengths = data
     inputs = inputs.float()
 
     # labels contains open, close, low, high
     targets = inputs[:, 1:, :4]  # batch_size x  seq_len-1 x output_size
-    targets = targets.reshape(targets.shape[0] * targets.shape[1], 4)  # batch_size * seq_len-1 x output_size
-
     inputs = inputs[:, :-1, :]  # batch_size x  seq_len-1 x input_size
 
     if use_gpu:
@@ -60,8 +59,9 @@ def push_data(data, model, use_gpu=True):
     else:
         inputs, targets = Variable(inputs), Variable(targets)
 
-    outputs = model(inputs)  # batch_size x seq_len-1 x output_size
-    outputs = torch.cat(outputs)  # batch_size * seq_len-1 x output_size
+    outputs = model(inputs)  # seq_len-1 x batch_size x output_size
+    outputs = torch.stack(outputs)
+    outputs = outputs.permute(1, 0, 2) # batch_size x seq_len-1 x output_size
 
     return outputs, targets
 
@@ -88,7 +88,6 @@ def train(
 
     learning_rate = 0.0001
     optimizer = torch.optim.RMSprop(model.parameters(), lr=learning_rate, alpha=0.99)
-    use_gpu = torch.cuda.is_available()
 
     interval = 100
     losses_train = []
@@ -198,8 +197,9 @@ if __name__ == "__main__":
     # Create directories
     args.save = '{}-{}'.format(args.save, time.strftime("%Y%m%d-%H%M%S"))
     create_dir(args.save)
-    # torch.cuda.set_device(args.gpu)
-    torch.cuda.set_device(-1)
+
+    if torch.cuda.is_available():
+        torch.cuda.set_device(args.gpu)
 
     train_data = StockDataset(
         data_folder='./gaped_up_stocks',
