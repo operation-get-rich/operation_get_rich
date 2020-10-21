@@ -99,14 +99,12 @@ def train(
     pre_time = time.time()
 
     inputs, original_sequence_lengths = next(iter(train_loader))
-
     [batch_size, seq_length, input_size] = inputs.size()
-    outputs = model(inputs)
-    output_size = outputs.shape[-1]
 
     # Variables for Early Stopping
     is_best_model = 0
     patient_epoch = 0
+    min_loss_epoch_valid = 10000.0
     for epoch in range(num_epochs):
         valid_dataloader_iter = iter(valid_loader)
 
@@ -118,7 +116,7 @@ def train(
             if inputs.shape[0] != batch_size:
                 continue
 
-            outputs, targets = push_data(data, model)
+            outputs, targets = feed_data(data, model)
             loss_train = compute_loss(outputs, targets, original_sequence_lengths, seq_length, loss)
 
             losses_train.append(loss_train.data)
@@ -138,7 +136,7 @@ def train(
                 data_val = next(valid_dataloader_iter)
 
             inputs_val, original_sequence_lengths_val = data_val
-            outputs_val, targets_val = push_data(data_val, model)
+            outputs_val, targets_val = feed_data(data_val, model)
 
             loss_valid = compute_loss(outputs_val, targets_val, original_sequence_lengths_val, seq_length, loss)
             losses_valid.append(loss_valid.data)
@@ -155,7 +153,6 @@ def train(
         if epoch == 0:
             is_best_model = 1
             best_model = model
-            min_loss_epoch_valid = 10000.0
             if avg_losses_epoch_valid < min_loss_epoch_valid:
                 min_loss_epoch_valid = avg_losses_epoch_valid
         else:
