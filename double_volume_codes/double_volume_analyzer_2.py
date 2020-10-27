@@ -2,7 +2,7 @@ import os
 from collections import defaultdict
 import datetime
 
-from double_volume_codes.fron_strategies import find_first_trade
+from double_volume_codes.double_volume_strategies import find_first_trade
 
 root_dir = 'gaped_up_stocks_early_volume_1e5_gap_10_by_date'
 
@@ -39,8 +39,8 @@ for the_date in sorted(os.listdir(f'../{root_dir}')):
     max_capital = max(max_capital, current_capital)
     year = int(the_date.split('-')[0])
 
-    if year != 2019:
-        continue
+    # if year != 2020:
+    #     continue
 
     monthly_capital_datas[the_date[0:-3]] = current_capital
     daily_capital_datas.append(current_capital)
@@ -78,6 +78,9 @@ for the_date in sorted(os.listdir(f'../{root_dir}')):
         print(f'Ticker = {trade_of_the_day.ticker}')
         print(f'Buy time = {trade_of_the_day.buy_time}')
         print(f'Sell time = {trade_of_the_day.sell_time}')
+        print(f'Holding time = {trade_of_the_day.sell_time - trade_of_the_day.buy_time}')
+        print(f'Buy price = ${trade_of_the_day.buy_price}')
+        print(f'Sell price = ${trade_of_the_day.sell_price}')
 
         total_holding_time += trade_of_the_day.sell_time - trade_of_the_day.buy_time
 
@@ -159,7 +162,7 @@ print(f'\nLatest buy time: {current_latest_buy_time}')
 import matplotlib.pyplot as plt
 import numpy as np
 
-#
+
 plt.plot(monthly_capital_datas.values())
 plt.xticks(np.arange(0, len(monthly_capital_datas), 1.0))
 plt.show()
