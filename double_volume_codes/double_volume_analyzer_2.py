@@ -6,7 +6,7 @@ from double_volume_codes.double_volume_strategies import find_first_trade
 
 root_dir = 'gaped_up_stocks_early_volume_1e5_gap_10_by_date'
 
-STARTING_CAPITAL = 25000
+STARTING_CAPITAL = 10000
 STOP_COMPOUNDING_CAPITAL_TARGET = 100000
 
 total_profit = 0

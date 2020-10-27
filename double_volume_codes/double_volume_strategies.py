@@ -6,11 +6,11 @@ import itertools
 
 from constants import TIME_FORMAT
 
-PROFIT_GOAL = .02
+PROFIT_GOAL = .1
 RISK_TOLERANCE = .01
 VOLUME_MULTIPLIER = 2
 PRICE_THRESHOLD = 20
-TIME_THRESHOLD = '10:00'
+TIME_THRESHOLD = '10:01'
 USE_VOLUME_MULTIPLIER = False
 
 
@@ -119,6 +119,7 @@ def find_first_trade(stock_file_path):
                 next_high = float(next_high)
 
                 if next_high > high:
+                    # It means that at some point, the tick price goes above the current candle's high
                     buy_price = high  # TODO: We need ticker data to be more accurate
                     print(f'\nBuying at {buy_price}')
                     print(f'Buying at time = {next_time}')
