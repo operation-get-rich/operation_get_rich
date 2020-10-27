@@ -147,15 +147,15 @@ print(f'Winning Trade Count = {winning_trade}')
 print(f'Losing Trade Count = {trade_count - winning_trade}')
 print(f'Accuracy: {(float(winning_trade) / trade_count) * 100}%')
 
-print(f'\n Average holding time: {total_holding_time/trade_count}')
+print(f'\nAverage holding time: {total_holding_time/trade_count}')
 
 print(f'\nAverage Profit: {(total_profit / winning_trade) * 100}%')
 print(f'Average Maxloss: {(total_max_loss / (trade_count - winning_trade)) * 100}%')
 
 print(f'\nMax profit of the day: +{max_profit_in_the_day * 100}%')
 print(f'Max loss of the day: -{max_loss_in_the_day * 100}%')
-print(f'Longet consecutive green days = {longest_consecutive_green_days}')
-print(f'Longet consecutive red days = {longest_consecutive_red_days}')
+print(f'Longest consecutive green days = {longest_consecutive_green_days}')
+print(f'Longest consecutive red days = {longest_consecutive_red_days}')
 
 print(f'\nLatest buy time: {current_latest_buy_time}')
 
