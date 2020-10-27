@@ -6,10 +6,11 @@ import itertools
 
 from constants import TIME_FORMAT
 
-PROFIT_GOAL=.02
-RISK_TOLERANCE =.01
-VOLUME_MULTIPLIER = 0.5
-PRICE_THRESHOLD = 200000
+PROFIT_GOAL = .02
+RISK_TOLERANCE = .01
+VOLUME_MULTIPLIER = 2
+PRICE_THRESHOLD = 20
+TIME_THRESHOLD = '10:00'
 USE_VOLUME_MULTIPLIER = False
 
 
@@ -49,14 +50,14 @@ class TradeInfo:
         self.max_loss = max_loss
 
 
-def is_market_open(time):
+def should_consider_trade_given_time(time):
     time_parsed = time.split()[1].split('-')[0].split(':')
 
     hour = int(time_parsed[0])
     minute = int(time_parsed[1])
 
     d1 = datetime.strptime(f'{hour}:{minute}', '%H:%M')
-    d2 = datetime.strptime(f'10:00', '%H:%M')
+    d2 = datetime.strptime(TIME_THRESHOLD, '%H:%M')
 
     return d1 > d2
 
@@ -83,15 +84,13 @@ def find_first_trade(stock_file_path):
 
             ticker, time, open_price, close, low, high, volume = pointer
 
-
-
             open_price = float(open_price)
             close = float(close)
             low = float(low)
             high = float(high)
             volume = int(volume)
 
-            if not is_market_open(time):
+            if not should_consider_trade_given_time(time):
                 continue
 
             if open_price > PRICE_THRESHOLD:
