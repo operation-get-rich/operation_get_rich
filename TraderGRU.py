@@ -1,15 +1,16 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+
 from torch.autograd import Variable
 
 
 class TraderGRU(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size):
+    def __init__(self, input_size, hidden_size):
         super(TraderGRU, self).__init__()
 
         self.input_size = input_size  # 7 (open, close, low, high, volume, vwap, ema)
         self.hidden_size = hidden_size  # 35
-        self.output_size = output_size  # 4 (open, close, low, high)
 
         use_gpu = torch.cuda.is_available()
         if use_gpu:
@@ -25,12 +26,41 @@ class TraderGRU(nn.Module):
         )
         self.output_layer = nn.Linear(
             in_features=self.hidden_size,  # 35
-            out_features=self.output_size  # 4
+            out_features=1
         )
-        self.output_layer = nn.Linear(
+        self.action_layer = nn.Linear(
             in_features=self.hidden_size,  # 35
-            out_features=self.output_size  # 4
+            out_features=1
         )
+
+    def sample_gumbel(self, shape, eps=1e-20):
+        U = torch.rand(shape).cuda()
+        return -Variable(torch.log(-torch.log(U + eps) + eps))
+
+    def gumbel_softmax_sample(self, logits, temperature, hard=False, deterministic=False, eps=1e-20):
+        
+        if deterministic:
+            if logits.shape[-1] == 1:
+                return F.sigmoid(logits)
+            else:
+                return F.softmax(logits, dim=-1)
+        
+        # Stochastic
+        if logits.shape[-1] == 1:
+            noise = torch.rand_like(logits)
+            y = (logits + torch.log(noise + eps) - torch.log(1 - noise + eps))            
+            y = torch.sigmoid(y / temperature)
+            if hard:
+                return (y > 0.5).float()
+            else:
+                return y
+        else:
+            y = logits + self.sample_gumbel(logits.size())
+            y = F.softmax(y / temperature, dim=-1)
+            if hard:
+                return (y > 0.5).float()
+            else:
+                return y
 
     def forward(
             self,
@@ -49,6 +79,13 @@ class TraderGRU(nn.Module):
             hidden_state = self.cell(curr_in, hidden_state)  # shape: 10, 35
             curr_out = self.output_layer(hidden_state)  # shape: 10, 4
 
+            # To trade or not to trade
+            temp = 0.05
+            action_logit = self.action_layer(hidden_state.unsqueeze(-1)) # batch x feature x 1
+            action = self.gumbel_softmax_sample(action_logit, temp, hard=self.hard)
+            action = action.squeeze(-1) # batch x feature
+
+            curr_out = F.tanh(curr_out) * action
             outputs.append(curr_out)
 
         return outputs  # shape: (up to) 389*, 10, 4
