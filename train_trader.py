@@ -24,16 +24,17 @@ parser.add_argument('--gpu', type=int, default=0, help='gpu device id')
 parser.add_argument('--save', type=str, default='Train', help='experiment name')
 args = parser.parse_args()
 
-def compute_loss(trades, # batch_size x seq_len
-             open_prices, # batch_size x seq_len
-             original_seq_length, # batch_size
-             loss
+
+def compute_loss(
+        trades,  # batch_size x seq_len
+        open_prices,  # batch_size x seq_len
+        original_seq_length,  # batch_size
+        loss
 ):
-    
     loss_train = 0
     for i, osl in enumerate(original_seq_length):
-        current_outputs = trades[i, 0 : osl]
-        current_prices = open_prices[i, 0 : osl]
+        current_outputs = trades[i, 0: osl]
+        current_prices = open_prices[i, 0: osl]
 
         loss_train += loss(
             current_outputs,
@@ -42,6 +43,7 @@ def compute_loss(trades, # batch_size x seq_len
     loss_train /= len(original_seq_length)
 
     return loss_train
+
 
 def feed_data(data, model):
     use_gpu = torch.cuda.is_available()
@@ -59,9 +61,10 @@ def feed_data(data, model):
     # TODO: Run and check shapes want batch_size x seq_len
     trades = model(inputs)  # seq_len-1 x batch_size x output_size x 1
     trades = torch.stack(trades)
-    trades = trades.permute(1, 0, 2) # batch_size x seq_len-1 x 1
+    trades = trades.permute(1, 0, 2)  # batch_size x seq_len-1 x 1
 
     return trades
+
 
 def train(
         model,  # type: TraderGRU
@@ -82,7 +85,7 @@ def train(
 
     # model.cuda()
 
-    loss = -ProfitReward
+    loss = ProfitReward
 
     learning_rate = 0.0001
     optimizer = torch.optim.RMSprop(model.parameters(), lr=learning_rate, alpha=0.99)
@@ -120,7 +123,7 @@ def train(
 
             losses_train.append(loss_train.data)
             losses_epoch_train.append(loss_train.data)
-            
+
             model.zero_grad()
             optimizer.zero_grad()
             loss_train.backward()
