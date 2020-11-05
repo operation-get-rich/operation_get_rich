@@ -231,4 +231,4 @@ if __name__ == "__main__":
     if torch.cuda.is_available():
         model = model.cuda()
 
-    best_grud, losses_grud = train(model, train_loader, test_loader, num_epochs=1)
+    best_grud, losses_grud = train(model, train_loader, test_loader)
