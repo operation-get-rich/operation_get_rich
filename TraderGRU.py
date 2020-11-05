@@ -6,7 +6,7 @@ from torch.autograd import Variable
 
 
 class TraderGRU(nn.Module):
-    def __init__(self, input_size, hidden_size):
+    def __init__(self, input_size, hidden_size, hard=False):
         super(TraderGRU, self).__init__()
 
         self.input_size = input_size  # 7 (open, close, low, high, volume, vwap, ema)
@@ -20,7 +20,7 @@ class TraderGRU(nn.Module):
             self.identity = torch.eye(input_size)
             self.zeros = Variable(torch.zeros(input_size))
 
-        self.cell = nn.GRUCell(
+        self.gru_cell = nn.GRUCell(
             input_size=self.input_size,  # 7
             hidden_size=self.hidden_size  # 35
         )
@@ -33,18 +33,20 @@ class TraderGRU(nn.Module):
             out_features=1
         )
 
+        self.hard = hard
+
     def sample_gumbel(self, shape, eps=1e-20):
         U = torch.rand(shape).cuda()
         return -Variable(torch.log(-torch.log(U + eps) + eps))
 
     def gumbel_softmax_sample(self, logits, temperature, hard=False, deterministic=False, eps=1e-20):
-        
+
         if deterministic:
             if logits.shape[-1] == 1:
                 return F.sigmoid(logits)
             else:
                 return F.softmax(logits, dim=-1)
-        
+
         # Stochastic
         if logits.shape[-1] == 1:
             noise = torch.rand_like(logits)
@@ -67,7 +69,6 @@ class TraderGRU(nn.Module):
             input  # shape: 10, 390, 7
     ):
         batch_size = input.shape[0]  # 10
-        # TODO: If the seqeuence length varied, this won't be a constant
         seq_length = input.shape[1]  # 389
         num_features = input.shape[2]  # 7
 
@@ -76,14 +77,13 @@ class TraderGRU(nn.Module):
         outputs = []
         for i in range(seq_length):
             curr_in = torch.squeeze(input[:, i, :], dim=1)  # shape: 10, 7
-            hidden_state = self.cell(curr_in, hidden_state)  # shape: 10, 35
-            curr_out = self.output_layer(hidden_state)  # shape: 10, 4
+            hidden_state = self.gru_cell(curr_in, hidden_state)  # shape: 10, 35
+            curr_out = self.output_layer(hidden_state)  # shape: 10, 1
 
             # To trade or not to trade
-            temp = 0.05
-            action_logit = self.action_layer(hidden_state.unsqueeze(-1)) # batch x feature x 1
-            action = self.gumbel_softmax_sample(action_logit, temp, hard=self.hard)
-            action = action.squeeze(-1) # batch x feature
+            temperature = 0.05
+            action_logit = self.action_layer(hidden_state)  # batch x 1
+            action = self.gumbel_softmax_sample(action_logit, temperature, hard=self.hard)
 
             curr_out = F.tanh(curr_out) * action
             outputs.append(curr_out)
