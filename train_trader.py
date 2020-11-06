@@ -1,19 +1,23 @@
 import argparse
 import os
 import time
+from typing import List, Tuple
 
 import numpy as np
 import pandas as pd
 
 import torch
+from torch import Tensor
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
 
 from TraderGRU import TraderGRU
-from stock_dataset import StockDataset, PercentChangeNormalizer
+from stock_dataset import StockDataset, PercentChangeNormalizer, OPEN_COLUMN_INDEX
 from objectives import ProfitReward
 
 import multiprocessing
+
+from utils import create_dir
 
 multiprocessing.set_start_method("spawn", True)
 
@@ -25,85 +29,31 @@ parser.add_argument('--gpu', type=int, default=0, help='gpu device id')
 parser.add_argument('--save', type=str, default='Train', help='experiment name')
 args = parser.parse_args()
 
-
-def compute_loss(
-        trades,  # batch_size x seq_len
-        open_prices,  # batch_size x seq_len
-        original_seq_length,  # batch_size
-        loss_function
-):
-    loss_train = 0
-    for i, osl in enumerate(original_seq_length):
-        current_outputs = trades[i, 0: osl].float()
-        current_prices = open_prices[i, 0: osl].float()
-
-        loss_train -= loss_function(
-            current_outputs,
-            current_prices
-        )
-    loss_train /= len(original_seq_length)
-
-    return loss_train
-
-
-def get_trades_from_model(features_osl_tuples, model):
-    use_gpu = torch.cuda.is_available()
-    features, original_sequence_lengths = features_osl_tuples
-    features = features.float()
-
-    normalized_features = PercentChangeNormalizer.normalize_volume(features)
-    normalized_features = PercentChangeNormalizer.normalize_price_into_percent_change(normalized_features)
-
-    # labels contains open, close, low, high
-    normalized_features = normalized_features[:, :-1, :].float()  # batch_size x  seq_len-1 x input_size
-
-    if use_gpu:
-        normalized_features = Variable(normalized_features.cuda())
-    else:
-        normalized_features = Variable(normalized_features)
-
-    # TODO: Run and check shapes want batch_size x seq_len
-    trades = model(normalized_features)  # seq_len-1 x batch_size x output_size x 1
-    trades = torch.stack(trades)
-    trades = trades.permute(1, 0, 2).squeeze(-1)  # batch_size x seq_len-1 x 1
-
-    return trades
+BATCH_SIZE = 10
 
 
 def train(
         trader_gru_model,  # type: TraderGRU
         train_loader,  # type: DataLoader
         valid_loader,  # type: DataLoader
+        batch_size=BATCH_SIZE,  # type: int
         num_epochs=30000,  # type: int
         patience=30000,  # type: int
-        min_delta=0.00001  # type: int
+        min_delta=0.00001,  # type: float
+        learning_rate=0.0001  # type: float
 ):
-    # type: (...) -> NotImplemented
-    """
-    TODO: Hyperparameter to experiemnts:
-        - The loss function (MSELoss, L1, etc)
-        - The optimizer (RMS, Adams...)
-    """
+    # type: (...) -> Tuple[TraderGRU, List[Tensor]]
+    loss_function = ProfitReward
+    optimizer = torch.optim.RMSprop(trader_gru_model.parameters(), lr=learning_rate)
+
     print('Model Structure: ', trader_gru_model)
     print('Start Training ... ')
 
-    # loss = torch.nn.MSELoss()
-    loss_function = ProfitReward
-
-    learning_rate = 0.0001
-    optimizer = torch.optim.RMSprop(trader_gru_model.parameters(), lr=learning_rate, alpha=0.99)
-
-    interval = 100
-    losses_train = []
-    losses_valid = []
-    losses_epochs_train = []
-    losses_epochs_valid = []
+    average_epoch_losses_train = []
+    average_epoch_losses_valid = []
 
     cur_time = time.time()
     pre_time = time.time()
-
-    prices, original_sequence_lengths = next(iter(train_loader))
-    [batch_size, seq_length, input_size] = prices.size()
 
     # Variables for Early Stopping
     is_best_model = 0
@@ -113,18 +63,27 @@ def train(
         losses_epoch_train = []
         losses_epoch_valid = []
 
-        for features_osl_tuples in train_loader:
-            prices, original_sequence_lengths = features_osl_tuples
-            prices  # shape: batch_size x sequence_length x feature_length
-            if prices.shape[0] != batch_size:
+        for features, original_sequence_lengths in train_loader:
+            features  # shape: batch_size x sequence_length x feature_length
+            original_sequence_lengths  # shape: batch_size
+
+            if features.shape[0] != batch_size:
                 continue
 
-            trades = get_trades_from_model(features_osl_tuples, trader_gru_model)
+            trades = get_trades_from_model(
+                features=features,
+                model=trader_gru_model
+            )  # shape: batch_size x sequence_length
 
-            open_prices = prices[:, :, 0]
-            loss_train = compute_loss(trades, open_prices, original_sequence_lengths, loss_function)
+            open_prices = features[:, :, OPEN_COLUMN_INDEX]
 
-            losses_train.append(loss_train)
+            loss_train = compute_loss(
+                trades=trades,
+                open_prices=open_prices,
+                original_sequence_lengths=original_sequence_lengths,
+                loss_function=loss_function
+            )
+
             losses_epoch_train.append(loss_train)
 
             trader_gru_model.zero_grad()
@@ -132,27 +91,30 @@ def train(
             loss_train.backward()
             optimizer.step()
 
-        for features_osl_tuples in valid_loader:
-            prices_val, original_sequence_lengths_val = features_osl_tuples
-
-            if prices_val.shape[0] != batch_size:
+        for features_val, original_sequence_lengths_val in valid_loader:
+            if features_val.shape[0] != batch_size:
                 continue
 
-            trades = get_trades_from_model(features_osl_tuples=features_osl_tuples, model=trader_gru_model)
+            trades = get_trades_from_model(
+                features=features_val,
+                model=trader_gru_model
+            )
 
-            open_prices = prices_val[:, :, 0]
-            loss_val = compute_loss(trades=trades, open_prices=open_prices,
-                                    original_seq_length=original_sequence_lengths,
-                                    loss_function=loss_function)
-            losses_valid.append(loss_val)
+            open_prices = features_val[:, :, 0]
+            loss_val = compute_loss(
+                trades=trades,
+                open_prices=open_prices,
+                original_sequence_lengths=original_sequence_lengths_val,
+                loss_function=loss_function
+            )
             losses_epoch_valid.append(loss_val)
 
         torch.save(trader_gru_model.state_dict(), args.save + "/latest_model.pt")
 
         avg_losses_epoch_train = sum(losses_epoch_train).cpu().detach().numpy() / float(len(losses_epoch_train))
         avg_losses_epoch_valid = sum(losses_epoch_valid).cpu().detach().numpy() / float(len(losses_epoch_valid))
-        losses_epochs_train.append(avg_losses_epoch_train)
-        losses_epochs_valid.append(avg_losses_epoch_valid)
+        average_epoch_losses_train.append(avg_losses_epoch_train)
+        average_epoch_losses_valid.append(avg_losses_epoch_valid)
 
         # Early Stopping
         if epoch == 0:
@@ -187,12 +149,48 @@ def train(
         )
         pre_time = cur_time
 
-    return best_model, [losses_train, losses_valid, losses_epochs_train, losses_epochs_valid]
+    return best_model, [average_epoch_losses_train, average_epoch_losses_valid]
 
 
-def create_dir(path):
-    if not os.path.exists(path):
-        os.mkdir(path)
+def compute_loss(
+        trades,  # batch_size x seq_len
+        open_prices,  # batch_size x seq_len
+        original_sequence_lengths,  # batch_size
+        loss_function
+):
+    loss_train = 0
+    for i, osl in enumerate(original_sequence_lengths):
+        current_outputs = trades[i, 0: osl].float()
+        current_prices = open_prices[i, 0: osl].float()
+
+        loss_train -= loss_function(
+            current_outputs,
+            current_prices
+        )
+    loss_train /= len(original_sequence_lengths)
+
+    return loss_train
+
+
+def get_trades_from_model(
+        features,  # size: batch_size x sequence_length x feature_length
+        model  # type: TraderGRU
+):
+    use_gpu = torch.cuda.is_available()
+    features = features.float()
+
+    normalized_features = PercentChangeNormalizer.normalize_volume(
+        features)  # size: batch_size x sequence_length x feature_length
+    normalized_features = PercentChangeNormalizer.normalize_price_into_percent_change(normalized_features)
+
+    if use_gpu:
+        normalized_features = Variable(normalized_features.cuda())
+    else:
+        normalized_features = Variable(normalized_features)
+
+    trades = model(normalized_features)  # batch_size x sequence_length
+
+    return trades
 
 
 if __name__ == "__main__":
@@ -215,8 +213,8 @@ if __name__ == "__main__":
         should_add_technical_indicator=True
     )
 
-    train_loader = DataLoader(train_data, num_workers=1, shuffle=True, batch_size=10)
-    test_loader = DataLoader(test_data, num_workers=1, shuffle=True, batch_size=10)
+    train_loader = DataLoader(train_data, num_workers=1, shuffle=True, batch_size=BATCH_SIZE)
+    test_loader = DataLoader(test_data, num_workers=1, shuffle=True, batch_size=BATCH_SIZE)
 
     inputs, sequence_length = next(iter(train_loader))
 
@@ -231,4 +229,4 @@ if __name__ == "__main__":
     if torch.cuda.is_available():
         model = model.cuda()
 
-    best_grud, losses_grud = train(model, train_loader, test_loader)
+    best_grud, losses_grud = train(model, train_loader, test_loader, num_epochs=1)
