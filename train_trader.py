@@ -60,54 +60,20 @@ def train(
     patient_epoch = 0
     min_loss_epoch_valid = 10000.0
     for epoch in range(num_epochs):
-        losses_epoch_train = []
-        losses_epoch_valid = []
+        losses_epoch_train = _train(
+            train_loader,
+            trader_gru_model,
+            loss_function,
+            optimizer,
+            batch_size
+        )
 
-        for features, original_sequence_lengths in train_loader:
-            features  # shape: batch_size x sequence_length x feature_length
-            original_sequence_lengths  # shape: batch_size
-
-            if features.shape[0] != batch_size:
-                continue
-
-            trades = get_trades_from_model(
-                features=features,
-                model=trader_gru_model
-            )  # shape: batch_size x sequence_length
-
-            open_prices = features[:, :, OPEN_COLUMN_INDEX]
-
-            loss_train = compute_loss(
-                trades=trades,
-                open_prices=open_prices,
-                original_sequence_lengths=original_sequence_lengths,
-                loss_function=loss_function
-            )
-
-            losses_epoch_train.append(loss_train)
-
-            trader_gru_model.zero_grad()
-            optimizer.zero_grad()
-            loss_train.backward()
-            optimizer.step()
-
-        for features_val, original_sequence_lengths_val in valid_loader:
-            if features_val.shape[0] != batch_size:
-                continue
-
-            trades = get_trades_from_model(
-                features=features_val,
-                model=trader_gru_model
-            )
-
-            open_prices = features_val[:, :, 0]
-            loss_val = compute_loss(
-                trades=trades,
-                open_prices=open_prices,
-                original_sequence_lengths=original_sequence_lengths_val,
-                loss_function=loss_function
-            )
-            losses_epoch_valid.append(loss_val)
+        losses_epoch_valid = _validate(
+            valid_loader,
+            trader_gru_model,
+            loss_function,
+            batch_size
+        )
 
         torch.save(trader_gru_model.state_dict(), args.save + "/latest_model.pt")
 
@@ -150,6 +116,60 @@ def train(
         pre_time = cur_time
 
     return best_model, [average_epoch_losses_train, average_epoch_losses_valid]
+
+
+def _validate(valid_loader, trader_gru_model, loss_function, batch_size):
+    losses_epoch_valid = []
+    for features_val, original_sequence_lengths_val in valid_loader:
+        if features_val.shape[0] != batch_size:
+            continue
+
+        trades = get_trades_from_model(
+            features=features_val,
+            model=trader_gru_model
+        )
+
+        open_prices = features_val[:, :, 0]
+        loss_val = compute_loss(
+            trades=trades,
+            open_prices=open_prices,
+            original_sequence_lengths=original_sequence_lengths_val,
+            loss_function=loss_function
+        )
+        losses_epoch_valid.append(loss_val)
+    return losses_epoch_valid
+
+
+def _train(train_loader, trader_gru_model, loss_function, optimizer, batch_size):
+    losses_epoch_train = []
+    for features, original_sequence_lengths in train_loader:
+        features  # shape: batch_size x sequence_length x feature_length
+        original_sequence_lengths  # shape: batch_size
+
+        if features.shape[0] != batch_size:
+            continue
+
+        trades = get_trades_from_model(
+            features=features,
+            model=trader_gru_model
+        )  # shape: batch_size x sequence_length
+
+        open_prices = features[:, :, OPEN_COLUMN_INDEX]
+
+        loss_train = compute_loss(
+            trades=trades,
+            open_prices=open_prices,
+            original_sequence_lengths=original_sequence_lengths,
+            loss_function=loss_function
+        )
+
+        losses_epoch_train.append(loss_train)
+
+        trader_gru_model.zero_grad()
+        optimizer.zero_grad()
+        loss_train.backward()
+        optimizer.step()
+    return losses_epoch_train
 
 
 def compute_loss(
