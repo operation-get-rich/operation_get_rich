@@ -77,6 +77,8 @@ def train(
 
         torch.save(trader_gru_model.state_dict(), args.save + "/latest_model.pt")
 
+        # TODO: Average is not a good indicator. What if at one
+
         avg_losses_epoch_train = sum(losses_epoch_train).cpu().detach().numpy() / float(len(losses_epoch_train))
         avg_losses_epoch_valid = sum(losses_epoch_valid).cpu().detach().numpy() / float(len(losses_epoch_valid))
         average_epoch_losses_train.append(avg_losses_epoch_train)
@@ -179,9 +181,11 @@ def compute_loss(
         loss_function
 ):
     loss_train = 0
-    for i, osl in enumerate(original_sequence_lengths):
-        current_outputs = trades[i, 0: osl].float()
-        current_prices = open_prices[i, 0: osl].float()
+    for batch_index, osl in enumerate(original_sequence_lengths):
+        current_outputs = trades[batch_index, 0: osl].float()
+        current_prices = open_prices[batch_index, 0: osl].float()
+
+        # TODO: What if at some day we lose 100% of our capital??
 
         loss_train -= loss_function(
             current_outputs,
@@ -249,4 +253,4 @@ if __name__ == "__main__":
     if torch.cuda.is_available():
         model = model.cuda()
 
-    best_grud, losses_grud = train(model, train_loader, test_loader, num_epochs=1)
+    best_grud, losses_grud = train(model, train_loader, test_loader)

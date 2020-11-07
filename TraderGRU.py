@@ -86,7 +86,7 @@ class TraderGRU(nn.Module):
 
             curr_out = self.output_layer(hidden_state)  # shape: batch x 1
 
-            curr_out = F.tanh(curr_out) * action
+            curr_out = torch.tanh(curr_out) * action
             outputs.append(curr_out)
 
         outputs = torch.stack(outputs).squeeze(-1)
