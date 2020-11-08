@@ -14,11 +14,6 @@ def ProfitReward(trade_sequence, market_sequence):
             shares = shares + sold_shares
             capital = capital - (sold_shares * current_price)
 
-        # print("Current Price: ", current_price)
-        # print("Current Trade: ", current_trade)
-        # print("Current Capital: ", capital)
-        # print("Current Shares: ", shares)
-
     final_price = market_sequence[-1]
     capital = capital + (shares * final_price)
 

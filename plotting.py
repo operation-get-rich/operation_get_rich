@@ -5,8 +5,10 @@ import mplfinance as mpf
 
 import numpy as np
 import matplotlib
+
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
+
 
 def plot_single_trajectory(predictions, targets, save_dir):
     predictions = predictions.detach().cpu().numpy()
@@ -19,9 +21,6 @@ def plot_single_trajectory(predictions, targets, save_dir):
     target_df = pd.DataFrame(targets, columns=['Open', 'Close', 'Low', 'High'])
 
     mpf.plot(pred_df, type='candle', style='yahoo', volume=True)
-
-    
-
 
     time = range(len(predictions))
 
