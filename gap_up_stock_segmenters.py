@@ -4,7 +4,7 @@ from pandas import DataFrame
 
 from utils import get_date_time, get_date, create_dir, get_date_string
 
-RAW_STOCK_PRICE_DIR = 'stock_prices'
+RAW_STOCK_PRICE_DIR = 'stock_prices_polygon'
 GAPED_UP_STOCKS_DIR_NAME = 'gaped_up_stocks_early_volume_1e5_gap_10'
 
 
@@ -51,6 +51,60 @@ def total_day_volume_and_high_of_day_gap(
                 if today_volume >= volume_threshold and is_gapping_up:
                     print(f'Found Gap Up: {ticker} at {todays_date}')
                     ticker_today_df.to_csv(path_or_buf=f'{save_dir_name}/{ticker}/{ticker}_{todays_date}.csv')
+
+
+def early_day_gap_refactor(
+        gap_up_threshold=0.10,
+        volume_threshold=0
+):
+    segments = []
+    raw_stock_list = os.listdir(RAW_STOCK_PRICE_DIR)
+    for stock_file in sorted(raw_stock_list):
+        stock_path = os.path.join(RAW_STOCK_PRICE_DIR, stock_file)
+
+        print("Loading Data: {}".format(stock_path), flush=True)
+        stock_price_df = pandas.read_csv(stock_path, parse_dates=['time'], index_col=0)  # type: DataFrame
+
+        prev_day_close_price = None
+        cumulative_volume = 0
+
+        for index in range(len(stock_price_df.index)):
+            (ticker,
+             time,
+             open_price,
+             close_price,
+             low_price,
+             high_price,
+             volume) = stock_price_df.loc[index]
+
+            if index + 1 < len(stock_price_df.index):
+                (next_ticker,
+                 next_time,
+                 next_open_price,
+                 next_close_price,
+                 next_low_price,
+                 next_high_price,
+                 next_volume) = stock_price_df.loc[index + 1]
+
+                if next_ticker != ticker:
+                    prev_day_close_price = None
+                    cumulative_volume = 0
+                    continue
+
+                if next_time.date() > time.date():
+                    prev_day_close_price = close_price
+                    continue
+
+            if prev_day_close_price is not None:
+                cumulative_volume += volume
+
+            if prev_day_close_price is not None and (time.hour, time.minute) == (9, 30):
+                is_price_gapped_up = (open_price / prev_day_close_price) - 1 > gap_up_threshold
+                if is_price_gapped_up and cumulative_volume > volume_threshold:
+                    segments.append((ticker, time.date))
+                    print("Gapped Up: ", ticker, time.date(), cumulative_volume flush=True)
+                prev_day_close_price = None
+                cumulative_volume = 0
 
 
 def early_day_gap(
@@ -125,4 +179,4 @@ def early_day_gap(
             the_segment.to_csv(path_or_buf='{}/{}_{}'.format(the_dir, ticker_segment, date_segment), index=False)
 
 
-total_day_volume_and_high_of_day_gap()
+early_day_gap_refactor()
