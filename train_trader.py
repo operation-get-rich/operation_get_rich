@@ -233,7 +233,7 @@ if __name__ == "__main__":
 
     test_data = StockDataset(
         data_folder='./gaped_up_stocks_early_volume_1e5_gap_10',
-        split='test',
+        split='valid',
         should_add_technical_indicator=True
     )
 
