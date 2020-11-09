@@ -92,11 +92,17 @@ class StockDataset(torch.utils.data.Dataset):
             for segment in segments:
                 self.segment_list.append(os.path.join(data_folder, company, segment))
         random.seed(69420)
+
+        if split == 'test':
+            pass
+            # TODO: Pick the last month stock data whatever
+            return
+
         random.shuffle(self.segment_list)
 
         if split == 'train':
             self.segment_list = self.segment_list[:int(len(self.segment_list) * .90)]
-        elif split == 'test':
+        elif split == 'valid':
             self.segment_list = self.segment_list[int(len(self.segment_list) * .90):]
 
         self.should_add_technical_indicator = should_add_technical_indicator
