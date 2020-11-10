@@ -5,7 +5,6 @@ from pandas import DataFrame
 from utils import get_date_time, get_date, create_dir, get_date_string
 
 RAW_STOCK_PRICE_DIR = 'stock_prices'
-GAPED_UP_STOCKS_DIR_NAME = 'gaped_up_stocks_early_volume_1e5_gap_10'
 
 
 def total_day_volume_and_high_of_day_gap(
@@ -67,6 +66,7 @@ def early_day_gap_refactor(
 
         prev_day_close_price = None
         cumulative_volume = 0
+        segments = []
 
         for index in range(len(stock_price_df.index)):
             (ticker,
@@ -101,10 +101,31 @@ def early_day_gap_refactor(
             if prev_day_close_price is not None and (time.hour, time.minute) == (9, 30):
                 is_price_gapped_up = (open_price / prev_day_close_price) - 1 > gap_up_threshold
                 if is_price_gapped_up and cumulative_volume > volume_threshold:
-                    segments.append((ticker, time.date))
+                    segments.append((ticker, time.date()))
                     print("Gapped Up: ", ticker, time.date(), cumulative_volume, flush=True)
                 prev_day_close_price = None
                 cumulative_volume = 0
+
+        if not segments:
+            continue
+
+        stock_price_df['just_date'] = stock_price_df.apply(lambda row: row.time.date(), axis=1)
+
+        save_dir_name = './{}_{}_{}'.format('early_day_gap_refactor', gap_up_threshold, volume_threshold)
+        create_dir(save_dir_name)
+        for ticker_segment, date_segment in segments:
+            print("Writing Ticker: ", ticker_segment, flush=True)
+            get_date_string(date_segment)
+            the_segment = stock_price_df[
+                (stock_price_df.ticker == ticker_segment) &
+                (stock_price_df.just_date == date_segment)
+                ]  # type: DataFrame
+            the_segment = the_segment.drop('just_date', axis=1)
+            # the_segment = the_segment.drop(the_segment.columns[0], axis=1)
+
+            the_dir = create_dir('./{}/{}'.format(save_dir_name, ticker_segment))
+
+            the_segment.to_csv(path_or_buf='{}/{}_{}'.format(the_dir, ticker_segment, date_segment), index=False)
 
 
 def early_day_gap(
@@ -163,7 +184,8 @@ def early_day_gap(
 
         stock_price_df['just_date'] = stock_price_df.apply(lambda row: get_date(row.time), axis=1)
 
-        create_dir('./%s' % GAPED_UP_STOCKS_DIR_NAME)
+        save_dir_name = './{}_{}_{}'.format('early_day_gap', gap_up_threshold, volume_threshold)
+        create_dir(save_dir_name)
         for ticker_segment, date_segment in segments:
             print("Writing Ticker: ", ticker_segment, flush=True)
             get_date_string(date_segment)
@@ -174,7 +196,7 @@ def early_day_gap(
             the_segment = the_segment.drop('just_date', axis=1)
             the_segment = the_segment.drop(the_segment.columns[0], axis=1)
 
-            the_dir = create_dir('./{}/{}'.format(GAPED_UP_STOCKS_DIR_NAME, ticker_segment))
+            the_dir = create_dir('./{}/{}'.format(save_dir_name, ticker_segment))
 
             the_segment.to_csv(path_or_buf='{}/{}_{}'.format(the_dir, ticker_segment, date_segment), index=False)
 
