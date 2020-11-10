@@ -102,7 +102,7 @@ def early_day_gap_refactor(
                 is_price_gapped_up = (open_price / prev_day_close_price) - 1 > gap_up_threshold
                 if is_price_gapped_up and cumulative_volume > volume_threshold:
                     segments.append((ticker, time.date))
-                    print("Gapped Up: ", ticker, time.date(), cumulative_volume flush=True)
+                    print("Gapped Up: ", ticker, time.date(), cumulative_volume, flush=True)
                 prev_day_close_price = None
                 cumulative_volume = 0
 
