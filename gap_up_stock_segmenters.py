@@ -4,7 +4,7 @@ from pandas import DataFrame
 
 from utils import get_date_time, get_date, create_dir, get_date_string
 
-RAW_STOCK_PRICE_DIR = 'stock_prices_polygon'
+RAW_STOCK_PRICE_DIR = 'stock_prices'
 GAPED_UP_STOCKS_DIR_NAME = 'gaped_up_stocks_early_volume_1e5_gap_10'
 
 
