@@ -8,6 +8,7 @@ from ta.trend import EMAIndicator
 from ta.volume import VolumeWeightedAveragePrice
 
 from TraderGRU import TraderGRU
+from utils import timeit
 
 model = TraderGRU(
     input_size=7,
@@ -42,7 +43,7 @@ def compute_ema(close_prices, ta_period):
     ).mean()  # ewm = exponential moving window
     return ewm.values[-1]
 
-
+@timeit
 def main():
     for date in sorted(os.listdir(gap_stocks_by_date_dir)):
         date_dir = f'{gap_stocks_by_date_dir}/{date}'
@@ -93,4 +94,6 @@ def main():
                 n=14
             ).ema_indicator()
             stock_np = stock_df[14:].to_numpy()
+            break
+        break
 main()
