@@ -26,7 +26,9 @@ parser = argparse.ArgumentParser(description='TraderGRU Train')
 
 # General Settings
 parser.add_argument('--gpu', type=int, default=0, help='gpu device id')
-parser.add_argument('--save', type=str, default='Train', help='experiment name')
+parser.add_argument('--load', type=str, default='', help='experiment name')
+parser.add_argument('--save', type=str, default='Debug', help='experiment name')
+parser.add_argument('--next_trade', action='store_true')
 args = parser.parse_args()
 
 BATCH_SIZE = 10
@@ -169,7 +171,8 @@ def _train(train_loader, trader_gru_model, loss_function, optimizer, batch_size)
 
         trader_gru_model.zero_grad()
         optimizer.zero_grad()
-        loss_train.backward()
+        if loss_train != 0:
+            loss_train.backward()
         optimizer.step()
     return losses_epoch_train
 
@@ -181,17 +184,23 @@ def compute_loss(
         loss_function
 ):
     loss_train = 0
+    num_sequences = 0
     for batch_index, osl in enumerate(original_sequence_lengths):
+        # BUG: Sometimes osl is 0
+        if osl <= 1:
+            continue
+
         current_outputs = trades[batch_index, 0: osl].float()
         current_prices = open_prices[batch_index, 0: osl].float()
 
         # TODO: What if at some day we lose 100% of our capital??
-
         loss_train -= loss_function(
             current_outputs,
-            current_prices
+            current_prices,
+            args.next_trade
         )
-    loss_train /= len(original_sequence_lengths)
+        num_sequences += 1
+    loss_train /= float(num_sequences)
 
     return loss_train
 
@@ -218,10 +227,7 @@ def get_trades_from_model(
 
 
 if __name__ == "__main__":
-    # Create directories
-    args.save = '{}-{}'.format(args.save, time.strftime("%Y%m%d-%H%M%S"))
-    create_dir(args.save)
-
+    print(args)
     if torch.cuda.is_available():
         torch.cuda.set_device(args.gpu)
 
@@ -233,7 +239,7 @@ if __name__ == "__main__":
 
     test_data = StockDataset(
         data_folder='./gaped_up_stocks_early_volume_1e5_gap_10',
-        split='test',
+        split='valid',
         should_add_technical_indicator=True
     )
 
@@ -250,6 +256,17 @@ if __name__ == "__main__":
         input_size=num_features,
         hidden_size=5 * num_features
     )
+
+    # Create directories
+    if args.load:
+        model_path = os.path.join(args.load, 'best_model.pt')
+        model.load_state_dict(torch.load(model_path, 
+            map_location=lambda storage, loc: storage))
+        args.save = args.load
+    else:
+        args.save = '{}-{}'.format(args.save, time.strftime("%Y%m%d-%H%M%S"))
+        create_dir(args.save)
+
     if torch.cuda.is_available():
         model = model.cuda()
 

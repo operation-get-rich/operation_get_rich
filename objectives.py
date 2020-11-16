@@ -1,4 +1,10 @@
-def ProfitReward(trade_sequence, market_sequence):
+def ProfitReward(trade_sequence, market_sequence, next_trade=False):
+    if next_trade:
+        trade_sequence = trade_sequence[:-1]
+        market_sequence = market_sequence[1:]
+
+    assert trade_sequence.shape[0] == market_sequence.shape[0]
+
     time_length = trade_sequence.shape[0]
     capital = 1
     shares = 0
