@@ -1,6 +1,7 @@
 import os
 import time
 from datetime import datetime
+from shutil import copyfile
 
 
 def get_all_ticker_names():
@@ -40,6 +41,27 @@ def get_date_time(time_str):
 
 
 def get_date_string(time):
+    """
+    :param time: time string with format like  2019-10-17 09:30:00-04:00
+    """
+    return time[0:11]
+
+
+def get_hour_string(time):
+    """
+    :param time: time string with format like  2019-10-17 09:30:00-04:00
+    """
+    return time[11:13]
+
+
+def get_minute_string(time):
+    """
+    :param time: time string with format like  2019-10-17 09:30:00-04:00
+    """
+    return time[14:16]
+
+
+def get_date_string_legacy(time):
     # type: (datetime) -> AnyStr
     return ' '.join(time.isoformat().split('T'))
 
@@ -60,3 +82,57 @@ def timeit(method):
         return result
 
     return timed
+
+
+def is_time2_greater(time1, time2):
+    """
+    :param time1: A date string with format like 2019-10-17 09:30:00-04:00
+    :param time2: A date string with format like 2019-10-17 09:30:00-04:00
+    """
+    time1_date = get_date_string(time1).split('-')
+    time2_date = get_date_string(time2).split('-')
+
+    if int(time2_date[2]) > int(time1_date[2]):
+        return True
+
+    if int(time2_date[1]) > int(time1_date[1]):
+        return True
+
+    if int(time2_date[0]) > int(time1_date[0]):
+        return True
+
+    return False
+
+
+def is_time_match(time, hour, minute):
+    time_hour = int(get_hour_string(time))
+    time_minute = int(get_minute_string(time))
+    return (time_hour, time_minute) == (hour, minute)
+
+
+def convert_gapped_up_stocks_directory_to_organized_by_date(
+        gapped_up_stocks_dir,
+        dest_dir
+):
+    """
+    If the gapped up stocks directory is organized by stocks name,
+    this funciton will create a new directory organized by dates, copying all the files in `gapped_up_stocks_dir`
+
+    Example Params:
+        gapped_up_stocks_dir = './gaped_up_stocks_early_volume_1e5_gap_10'
+        dest_dir = './gaped_up_stocks_early_volume_1e5_gap_10_by_date'
+    """
+    for stock_dir in sorted(os.listdir(gapped_up_stocks_dir)):
+        for stock_file in sorted(os.listdir(f'{gapped_up_stocks_dir}/{stock_dir}')):
+            date = stock_file[-25:-15]
+            create_dir(f'{dest_dir}/{date}')
+            copyfile(f'{gapped_up_stocks_dir}/{stock_dir}/{stock_file}',
+                     f'{dest_dir}/{date}/{stock_file}')
+
+
+def get_current_filename(dunder_file):
+    return os.path.basename(dunder_file)
+
+
+def get_current_directory(dunder_file):
+    return os.path.dirname(os.path.realpath(dunder_file))
