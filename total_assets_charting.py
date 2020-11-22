@@ -31,8 +31,8 @@ for date in total_assets_db:
         xfmt = md.DateFormatter('%Y-%m-%d %H:%M:%S')
         ax.xaxis.set_major_formatter(xfmt)
 
-        plt.plot(datenums, assets, label=ticker, marker='.')
+        plt.plot(datenums, assets, label=ticker)
     plt.legend()
-    plt.show()
-    # plt.savefig(f'{root_chart_dir}/{date}.png')
+    # plt.show()
+    plt.savefig(f'{root_chart_dir}/{date}.png')
     plt.clf()
