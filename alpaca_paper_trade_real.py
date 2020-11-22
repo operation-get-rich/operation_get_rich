@@ -32,141 +32,6 @@ model.eval()
 gap_stocks_by_date_dir = 'gaped_up_stocks_early_volume_1e5_gap_10_by_date'
 
 
-def compute_ema(close_prices, ta_period=14):
-    close_prices_series = pd.Series(close_prices)
-    ewm = close_prices_series.ewm(
-        span=ta_period,
-        min_periods=ta_period,
-        adjust=False
-    ).mean()  # ewm = exponential moving window
-    return ewm.values[-1]
-
-
-def append_total_assets_db(trade_date, ticker, total_assets_progression):
-    json_filename = 'total_assets_progression_by_time.json'
-    with open(json_filename, 'r') as json_file:
-        current_total_assets_db = json.load(json_file)
-
-    if trade_date in current_total_assets_db:
-        current_total_assets_db[trade_date][ticker] = total_assets_progression
-    else:
-        current_total_assets_db[trade_date] = {
-            ticker: total_assets_progression
-        }
-
-    with open(json_filename, 'w') as json_file:
-        json.dump(current_total_assets_db, json_file)
-
-
-def append_trades_db(trade_date, ticker, trades):
-    json_filename = 'trades_by_time.json'
-    with open(json_filename, 'r') as json_file:
-        db_json = json.load(json_file)
-
-    if trade_date in db_json:
-        db_json[trade_date][ticker] = trades
-    else:
-        db_json[trade_date] = {
-            ticker: trades
-        }
-
-    with open(json_filename, 'w') as json_file:
-        json.dump(db_json, json_file)
-
-
-@timeit
-def _main():
-    capital = 10000
-    capital_progression = []
-    dates = []
-    for date in sorted(os.listdir(gap_stocks_by_date_dir)):
-        dates.append(date)
-        print(f'\nTrading date: {date}')
-        start_of_day_capital = capital
-        print(f'Capital Start of day : {format_usd(start_of_day_capital)}')
-        date_dir = f'{gap_stocks_by_date_dir}/{date}'
-
-        stock_files = sorted(os.listdir(date_dir))
-        capital_per_company = float(capital) / len(stock_files)
-        capital = 0
-        for stock_file in stock_files:
-            (
-                trade_date,
-                ticker,
-                total_assets_progression,
-                trades,
-                stock_capital
-            ) = day_trade(stock_file, date_dir, capital_per_company)
-            capital += stock_capital
-            # append_total_assets_db(trade_date, ticker, total_assets_progression)
-            # append_trades_db(trade_date, ticker, trades)
-        capital_progression.append(capital)
-    plt.plot(dates, capital_progression)
-    plt.xticks(rotation=90)
-    plt.show()
-    return capital
-
-
-@timeit
-def day_trade(stock_file, date_dir, capital):
-    ticker_name = stock_file[:-26]
-    trade_date = date_dir[-10:]
-
-    print(f'\nTrading ticker: {ticker_name}')
-    stock_df = pd.read_csv(f'{date_dir}/{stock_file}')
-    stock_df = stock_df.drop(labels=['ticker'], axis=1)
-
-    ta_period = 14
-    volumes = []
-    price_volume_products = []
-    close_prices = []
-    inputs = []
-
-    trade = None
-    shares = 0
-
-    total_assets_progression = {}
-    trades = {}
-    for i in range(len(stock_df)):
-        (
-            time,
-            open_price,
-            close_price,
-            low_price,
-            high_price,
-            volume
-        ) = stock_df.loc[i]
-        typical_price = mean([close_price, low_price, high_price])
-
-        volumes.append(volume)
-        price_volume_products.append(volume * typical_price)
-        close_prices.append(close_price)
-
-        able_to_compute_ta = i >= (ta_period - 1)
-        if able_to_compute_ta:
-            current_total_asset = open_price * shares + capital
-            total_assets_progression[time] = current_total_asset
-            print(f'\nCurrent Total Asset (liquid + shares) {format_usd(current_total_asset)}')
-            if trade:
-                trades[time] = float(trade)
-                if trade > 0:
-                    capital, shares = buy(trade, open_price, capital, shares, ticker_name)
-                if trade < 0:
-                    capital, shares = sell(trade, open_price, capital, shares, ticker_name)
-
-            vwap = compute_vwap(i, price_volume_products, volumes, ta_period)
-            ema = compute_ema(close_prices, ta_period)
-
-            input = [open_price, close_price, low_price, high_price, volume, vwap, ema]
-            inputs.append(input)
-
-            trade = get_trade_from_model(inputs, trade)
-    if shares > 0:
-        capital += shares * close_price
-        total_assets_progression[time] = capital
-    return (trade_date, ticker_name, total_assets_progression, trades, capital)
-
-
 def get_trade_from_model(inputs):
     inputs_tensor = torch.FloatTensor([inputs])
     normalized_inputs_tensor = PCN.normalize_volume(inputs_tensor)
@@ -176,61 +41,37 @@ def get_trade_from_model(inputs):
     return trade
 
 
-def sell_legacy(trade, open_price, capital, shares, ticker_name):
-    shares_to_sell = math.floor(abs(trade) * shares)
-    capital += shares_to_sell * open_price
-    shares -= shares_to_sell
-    print(f'\nSelling {shares_to_sell} shares of {ticker_name} at {format_usd(open_price)}')
-    print(f'Delta: {format_usd(shares_to_sell * open_price)}')
-    print(f'Capital: {format_usd(capital)}')
-    print(f'Shares: {shares}')
-    return capital, shares
-
-
-def buy_legacy(trade, open_price, capital, shares, ticker_name):
-    capital_to_use = capital * trade
-    shares_to_buy = math.floor(capital_to_use / open_price)
-    capital_to_use = shares_to_buy * open_price
-    capital -= capital_to_use
-    shares += shares_to_buy
-    print(f'\nBuying {shares_to_buy} shares of {ticker_name} at {format_usd(open_price)}')
-    print(f'Buying using {format_usd(capital_to_use)} worth of capital')
-    print(f'Capital: {format_usd(capital)}')
-    print(f'Shares: {shares}')
-    return capital, shares
-
-
-def sell_all(symbol):
-    # TODO: Implement sell all shares at market price
-    pass
-
-
 # TODO: Update capital and shares owned in the call back of trade updates
 def sell(symbol, shares_owned, trade, capital):
     shares_to_sell = math.floor(abs(trade) * shares_owned)
-    api.submit_order(
-        symbol=symbol,
-        qty=shares_to_sell,
-
-        side=SIDE_SELL,
-        type=ORDER_TYPE_LIMIT,
-        time_in_force=TIME_IN_FORCE_GTC,
-        limit_price=get_best_bid_price(symbol)
-    )
+    print(f'Selling {shares_to_sell} of {symbol} @ {format_usd(get_best_bid_price(symbol))}')
+    print('bar_state_sell:', bar_state)
+    if shares_to_sell > 0:
+        api.submit_order(
+            symbol=symbol,
+            qty=shares_to_sell,
+            side=SIDE_SELL,
+            type=ORDER_TYPE_LIMIT,
+            time_in_force=TIME_IN_FORCE_GTC,
+            limit_price=get_best_bid_price(symbol)
+        )
 
 
 # TODO: Update capital and shares owned in the call back of trade updates
 def buy(symbol, trade, capital):
     capital_to_use = capital * trade
     shares_to_buy = math.floor(capital_to_use / get_best_ask_price(symbol))
-    api.submit_order(
-        symbol=symbol,
-        qty=shares_to_buy,
-        side='buy',
-        type='limit',
-        time_in_force='gtc',
-        limit_price=get_best_ask_price(symbol)
-    )
+    print(f'Buying {shares_to_buy} of {symbol} @ {format_usd(get_best_ask_price(symbol))}')
+    print('bar_state_buy:', bar_state)
+    if shares_to_buy > 0:
+        api.submit_order(
+            symbol=symbol,
+            qty=shares_to_buy,
+            side='buy',
+            type='limit',
+            time_in_force='gtc',
+            limit_price=get_best_ask_price(symbol)
+        )
 
 
 def format_usd(capital):
@@ -243,6 +84,16 @@ def compute_vwap(price_volume_products, volumes, ta_period=14):
     sum_v = sum(volumes[-ta_period:])
     vwap = sum_pv / sum_v
     return vwap
+
+
+def compute_ema(close_prices, ta_period=14):
+    close_prices_series = pd.Series(close_prices)
+    ewm = close_prices_series.ewm(
+        span=ta_period,
+        min_periods=ta_period,
+        adjust=False
+    ).mean()  # ewm = exponential moving window
+    return ewm.values[-1]
 
 
 conn = StreamConn(
@@ -303,18 +154,19 @@ async def handle_bar(bar):
             TRADES_KEY: [],
             CAPITAL_KEY: 10000,  # TODO: Figure out how to divide the capital
             SHARES_OWNED_KEY: 0,
-            TOTAL_ASSETS_PROGRESSION_KEY: [],
+            TOTAL_ASSETS_PROGRESSION_KEY: {},
             TRADES_BY_TIME_KEY: {},
         }
-    else:
-        bar_state[symbol][RAW_FEATURES_KEY].append(
+    bar_state[symbol][RAW_FEATURES_KEY].append(
+        [
             bar.start,
             bar.open,
             bar.close,
             bar.low,
             bar.high,
-            bar.totalvolume
-        )
+            bar.volume
+        ]
+    )
 
     symbol_bar_state = bar_state[symbol]
     last_raw_feature = symbol_bar_state[RAW_FEATURES_KEY][-1]
@@ -326,6 +178,7 @@ async def handle_bar(bar):
         last_high_price,
         last_volume
     ) = last_raw_feature
+
     last_typical_price = mean([last_close_price, last_low_price, last_high_price])
 
     volumes = symbol_bar_state[VOLUMES_KEY]
@@ -341,21 +194,23 @@ async def handle_bar(bar):
     shares_owned = symbol_bar_state[SHARES_OWNED_KEY]
     total_assets_progression = symbol_bar_state[TOTAL_ASSETS_PROGRESSION_KEY]
 
-    able_to_compute_ta = len(bar_state[RAW_FEATURES_KEY]) >= TA_PERIOD
+    able_to_compute_ta = len(symbol_bar_state[RAW_FEATURES_KEY]) >= TA_PERIOD
 
     if able_to_compute_ta:
         current_total_asset = get_best_bid_price(symbol) * shares_owned + capital
         total_assets_progression[last_time] = current_total_asset
         print(f'\nCurrent Total Asset (liquid + shares_owned) {format_usd(current_total_asset)}')
 
-        last_vwap = compute_vwap(price_volume_products, volumes)
-        last_ema = compute_ema(close_prices)
+        last_vwap = compute_vwap(price_volume_products, volumes, ta_period=TA_PERIOD)
+        last_ema = compute_ema(close_prices, ta_period=TA_PERIOD)
 
         last_input = [last_open_price, last_close_price, last_low_price, last_high_price, last_volume, last_vwap,
                       last_ema]
         symbol_bar_state[MODEL_INPUTS_KEY].append(last_input)
 
         trade = get_trade_from_model(symbol_bar_state[MODEL_INPUTS_KEY])
+
+        symbol_bar_state[TRADES_KEY].append(trade)
 
         if trade > 0:
             buy(symbol, trade, capital)
@@ -373,6 +228,64 @@ async def handle_quote(quote):
 
     quote_state[symbol][ASK_KEY][quote.askexchange] = quote.askprice
     quote_state[symbol][BID_KEY][quote.bidexchange] = quote.bidprice
+
+
+@conn.on(r'^trade_updates$')
+async def on_account_updates(conn, channel, account):
+    """
+    {
+        'event': 'fill',
+        'order': {
+            'asset_class': 'us_equity',
+            'asset_id': 'b0b6dd9d-8b9b-48a9-ba46-b9d54906e415',
+            'canceled_at': None,
+            'client_order_id': '9548909c-bb9a-402d-b916-95a13e917ce6',
+            'created_at': '2020-11-19T19:57:02.542513Z',
+            'expired_at': None,
+            'extended_hours': False,
+            'failed_at': None,
+            'filled_at': '2020-11-19T19:57:02.695986Z',
+            'filled_avg_price': '118.42',
+            'filled_qty': '84',
+            'hwm': None,
+            'id': '88c7f734-f2e2-4d46-96e8-5cfb9a2fce86',
+            'legs': None,
+            'limit_price': '118.42',
+            'order_class': '',
+            'order_type': 'limit',
+            'qty': '84',
+            'replaced_at': None,
+            'replaced_by': None,
+            'replaces': None,
+            'side': 'buy',
+            'status': 'filled',
+            'stop_price': None,
+            'submitted_at': '2020-11-19T19:57:02.537808Z',
+            'symbol': 'AAPL',
+            'time_in_force': 'gtc',
+            'trail_percent': None,
+            'trail_price': None,
+            'type': 'limit',
+            'updated_at': '2020-11-19T19:57:02.706647Z'
+        },
+        'position_qty': '84',
+        'price': '118.42',
+        'qty': '84',
+        'timestamp': '2020-11-19T19:57:02.695986612Z'
+    }
+    """
+    if account.event == 'fill':
+        filled_quantity = int(account.order['filled_qty'])
+        filled_avg_price = float(account.order['filled_avg_price'])
+        if account.order['side'] == 'buy':
+            bar_state[account.order['symbol']][SHARES_OWNED_KEY] += filled_quantity
+            bar_state[account.order['symbol']][CAPITAL_KEY] -= filled_quantity * filled_avg_price
+            print('bar_state_buy_filled', bar_state)
+        if account.order['side'] == 'sell':
+            bar_state[account.order['symbol']][SHARES_OWNED_KEY] -= filled_quantity
+            bar_state[account.order['symbol']][CAPITAL_KEY] += filled_quantity * filled_avg_price
+            print('bar_state_sell_filled', bar_state)
+        return
 
 
 @conn.on(r'^AM.*')
@@ -393,7 +306,9 @@ async def on_minute_bars(conn, channel, bar):
         'timestamp': 1605628500000
     }
     """
-    print(bar.symbol)
+    print('bar', bar)
+    print('bar_state', bar_state)
+    await handle_bar(bar)
 
 
 @conn.on(r'^Q.*')
@@ -410,6 +325,11 @@ async def on_quote(conn, channel, quote):
            'timestamp': 1605730275616000000})
     """
     print(quote)
+    await handle_quote(quote)
 
 
-conn.run(['Q.AAPL'])
+conn.run([
+    'Q.AYRO', 'AM.AYRO',
+    # 'Q.LGVW', 'AM.LGVW',
+    # 'Q.AMRN', 'AM.AMRN'
+    'trade_updates'])
