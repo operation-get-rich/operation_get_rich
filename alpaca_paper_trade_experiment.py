@@ -3,12 +3,14 @@ import math
 import os
 from statistics import mean
 
+import matplotlib.pyplot as plt
 import pandas as pd
 import torch
 
 from TraderGRU import TraderGRU
 from stock_dataset import PercentChangeNormalizer as PCN
 from utils import timeit
+
 
 model = TraderGRU(
     input_size=7,
@@ -23,7 +25,7 @@ model.load_state_dict(
 )
 model.eval()
 
-gap_stocks_by_date_dir = 'fron_gapped_up_stocks'
+gap_stocks_by_date_dir = 'gaped_up_stocks_early_volume_1e5_gap_10_by_date'
 
 
 def compute_vwap(i, price_volume_products, volumes, ta_period=14):
@@ -80,16 +82,33 @@ def append_trades_db(trade_date, ticker, trades):
 @timeit
 def main():
     capital = 10000
+    capital_progression = []
+    dates = []
     for date in sorted(os.listdir(gap_stocks_by_date_dir)):
+        dates.append(date)
         print(f'\nTrading date: {date}')
         start_of_day_capital = capital
         print(f'Capital Start of day : {format_usd(start_of_day_capital)}')
         date_dir = f'{gap_stocks_by_date_dir}/{date}'
-        for stock_file in sorted(os.listdir(date_dir)):
-            capital = 10000
-            trade_date, ticker, total_assets_progression, trades = day_trade(stock_file, date_dir, capital)
-            append_total_assets_db(trade_date, ticker, total_assets_progression)
-            append_trades_db(trade_date, ticker, trades)
+
+        stock_files = sorted(os.listdir(date_dir))
+        capital_per_company = float(capital) / len(stock_files)
+        capital = 0
+        for stock_file in stock_files:
+            (
+                trade_date,
+                ticker,
+                total_assets_progression,
+                trades,
+                stock_capital
+            ) = day_trade(stock_file, date_dir, capital_per_company)
+            capital += stock_capital
+            # append_total_assets_db(trade_date, ticker, total_assets_progression)
+            # append_trades_db(trade_date, ticker, trades)
+        capital_progression.append(capital)
+    plt.plot(dates, capital_progression)
+    plt.xticks(rotation=90)
+    plt.show()
     return capital
 
 
@@ -150,13 +169,14 @@ def day_trade(stock_file, date_dir, capital):
     if shares > 0:
         capital += shares * close_price
         total_assets_progression[time] = capital
-    return (trade_date, ticker_name, total_assets_progression, trades)
+    return (trade_date, ticker_name, total_assets_progression, trades, capital)
 
 
 def get_next_trade_from_model(inputs, trade):
     inputs_tensor = torch.FloatTensor([inputs])
     normalized_inputs_tensor = PCN.normalize_volume(inputs_tensor)
     normalized_inputs_tensor = PCN.normalize_price_into_percent_change(normalized_inputs_tensor)
+
     trades = model(normalized_inputs_tensor)
     trade = trades.detach().numpy()[0][-1]
     return trade
