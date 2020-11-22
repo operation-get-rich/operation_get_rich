@@ -1,4 +1,4 @@
-def ProfitReward(trade_sequence, market_sequence, next_trade=False):
+def ProfitLoss(trade_sequence, market_sequence, is_premarket=None, next_trade=False):
     if next_trade:
         trade_sequence = trade_sequence[:-1]
         market_sequence = market_sequence[1:]
@@ -9,6 +9,10 @@ def ProfitReward(trade_sequence, market_sequence, next_trade=False):
     capital = 1
     shares = 0
     for t in range(time_length):
+        if is_premarket != None:
+            if is_premarket[t]:
+                continue
+
         current_trade = trade_sequence[t]
         current_price = market_sequence[t]
         if current_trade > 0:  # buying
@@ -23,4 +27,5 @@ def ProfitReward(trade_sequence, market_sequence, next_trade=False):
     final_price = market_sequence[-1]
     capital = capital + (shares * final_price)
 
-    return capital - 1
+    # Return negative reward
+    return -(capital - 1)

@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader
 
 from TraderGRU import TraderGRU
 from stock_dataset import StockDataset, PercentChangeNormalizer, OPEN_COLUMN_INDEX
-from objectives import ProfitReward
+from objectives import ProfitLoss
 
 import multiprocessing
 
@@ -29,6 +29,8 @@ parser.add_argument('--gpu', type=int, default=0, help='gpu device id')
 parser.add_argument('--load', type=str, default='', help='experiment name')
 parser.add_argument('--save', type=str, default='Debug', help='experiment name')
 parser.add_argument('--next_trade', action='store_true')
+parser.add_argument('--multiply', action='store_true')
+
 args = parser.parse_args()
 
 BATCH_SIZE = 10
@@ -45,7 +47,7 @@ def train(
         learning_rate=0.0001  # type: float
 ):
     # type: (...) -> Tuple[TraderGRU, List[Tensor]]
-    loss_function = ProfitReward
+    loss_function = ProfitLoss
     optimizer = torch.optim.RMSprop(trader_gru_model.parameters(), lr=learning_rate)
 
     print('Model Structure: ', trader_gru_model)
@@ -119,12 +121,10 @@ def train(
         )
         pre_time = cur_time
 
-    return best_model, [average_epoch_losses_train, average_epoch_losses_valid]
-
 
 def _validate(valid_loader, trader_gru_model, loss_function, batch_size):
     losses_epoch_valid = []
-    for features_val, original_sequence_lengths_val in valid_loader:
+    for features_val, original_sequence_lengths_val, is_premarket in valid_loader:
         if features_val.shape[0] != batch_size:
             continue
 
@@ -135,18 +135,23 @@ def _validate(valid_loader, trader_gru_model, loss_function, batch_size):
 
         open_prices = features_val[:, :, 0]
         loss_val = compute_loss(
+            loss_function=loss_function,
             trades=trades,
             open_prices=open_prices,
             original_sequence_lengths=original_sequence_lengths_val,
-            loss_function=loss_function
+            is_premarket=is_premarket,
+            multiply=args.multiply
         )
+
+        if args.multiply:
+            loss_val = -(torch.exp(-loss_val) - 1)
         losses_epoch_valid.append(loss_val)
     return losses_epoch_valid
 
 
 def _train(train_loader, trader_gru_model, loss_function, optimizer, batch_size):
     losses_epoch_train = []
-    for features, original_sequence_lengths in train_loader:
+    for features, original_sequence_lengths, is_premarket in train_loader:
         features  # shape: batch_size x sequence_length x feature_length
         original_sequence_lengths  # shape: batch_size
 
@@ -161,30 +166,34 @@ def _train(train_loader, trader_gru_model, loss_function, optimizer, batch_size)
         open_prices = features[:, :, OPEN_COLUMN_INDEX]
 
         loss_train = compute_loss(
+            loss_function=loss_function,
             trades=trades,
             open_prices=open_prices,
             original_sequence_lengths=original_sequence_lengths,
-            loss_function=loss_function
+            is_premarket=is_premarket,
+            multiply=args.multiply
         )
-
-        losses_epoch_train.append(loss_train)
 
         trader_gru_model.zero_grad()
         optimizer.zero_grad()
-        if loss_train != 0:
-            loss_train.backward()
+        loss_train.backward()
         optimizer.step()
+        
+        if args.multiply:
+            loss_train = -(torch.exp(-loss_train) - 1)
+        losses_epoch_train.append(loss_train)
     return losses_epoch_train
 
-
 def compute_loss(
+        loss_function,
         trades,  # batch_size x seq_len
         open_prices,  # batch_size x seq_len
         original_sequence_lengths,  # batch_size
-        loss_function
+        is_premarket=None,
+        multiply=False
 ):
-    loss_train = 0
     num_sequences = 0
+    losses = []
     for batch_index, osl in enumerate(original_sequence_lengths):
         # BUG: Sometimes osl is 0
         if osl <= 1:
@@ -192,17 +201,33 @@ def compute_loss(
 
         current_outputs = trades[batch_index, 0: osl].float()
         current_prices = open_prices[batch_index, 0: osl].float()
+        current_is_premarket = is_premarket[batch_index, 0: osl].float()
 
         # TODO: What if at some day we lose 100% of our capital??
-        loss_train -= loss_function(
+        current_loss =  loss_function(
             current_outputs,
             current_prices,
+            current_is_premarket,
             args.next_trade
         )
+        losses.append(current_loss)
         num_sequences += 1
-    loss_train /= float(num_sequences)
 
-    return loss_train
+    if multiply:
+        eps = 1e-15
+        logsum = 0 
+        for loss in losses:
+            change = -loss + 1 # change is in range [0, inf]
+            log_change = torch.log(change + eps)
+            logsum += log_change
+        total_loss = -logsum
+    else:
+        total_loss = 0
+        for loss in losses:
+            total_loss += loss
+    total_loss /= float(num_sequences)
+
+    return total_loss
 
 
 def get_trades_from_model(
@@ -246,9 +271,7 @@ if __name__ == "__main__":
     train_loader = DataLoader(train_data, num_workers=1, shuffle=True, batch_size=BATCH_SIZE)
     test_loader = DataLoader(test_data, num_workers=1, shuffle=True, batch_size=BATCH_SIZE)
 
-    inputs, sequence_length = next(iter(train_loader))
-
-    inputs, original_sequence_lengths = next(iter(train_loader))
+    inputs, original_sequence_lengths, is_premarket = next(iter(train_loader))
     inputs  # shape: 10, 390, 7
     [batch_size, seq_length, num_features] = inputs.size()
 
@@ -259,15 +282,15 @@ if __name__ == "__main__":
 
     # Create directories
     if args.load:
-        model_path = os.path.join(args.load, 'best_model.pt')
+        model_path = os.path.join('runs', args.load, 'best_model.pt')
         model.load_state_dict(torch.load(model_path, 
             map_location=lambda storage, loc: storage))
-        args.save = args.load
-    else:
-        args.save = '{}-{}'.format(args.save, time.strftime("%Y%m%d-%H%M%S"))
-        create_dir(args.save)
+    
+    args.save = '{}-{}'.format(args.save, time.strftime("%Y%m%d-%H%M%S"))
+    args.save = os.path.join('runs', args.save)
+    create_dir(args.save)
 
     if torch.cuda.is_available():
         model = model.cuda()
 
-    best_grud, losses_grud = train(model, train_loader, test_loader)
+    train(model, train_loader, test_loader)
