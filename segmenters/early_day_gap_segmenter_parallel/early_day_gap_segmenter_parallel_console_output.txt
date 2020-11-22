@@ -1,0 +1,8 @@
+Loading Data: stock_prices_polygon/stock_0.csv
+Loading Data: stock_prices_polygon/stock_1180.csv
+Loading Data: stock_prices_polygon/stock_1380.csv
+Loading Data: stock_prices_polygon/stock_1580.csv
+Loading Data: stock_prices_polygon/stock_1780.csv
+Loading Data: stock_prices_polygon/stock_1980.csv
+Loading Data: stock_prices_polygon/stock_2170.csv
+Loading Data: stock_prices_polygon/stock_2370.csv
