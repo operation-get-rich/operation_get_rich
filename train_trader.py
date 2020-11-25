@@ -30,6 +30,7 @@ parser.add_argument('--load', type=str, default='', help='experiment name')
 parser.add_argument('--save', type=str, default='Debug', help='experiment name')
 parser.add_argument('--next_trade', action='store_true')
 parser.add_argument('--multiply', action='store_true')
+parser.add_argument('--sparse', action='store_true')
 
 args = parser.parse_args()
 
@@ -225,7 +226,7 @@ def compute_loss(
         total_loss = 0
         for loss in losses:
             total_loss += loss
-    total_loss /= float(num_sequences)
+        total_loss /= float(num_sequences)
 
     return total_loss
 
@@ -277,7 +278,8 @@ if __name__ == "__main__":
 
     model = TraderGRU(
         input_size=num_features,
-        hidden_size=5 * num_features
+        hidden_size=5 * num_features,
+        sparse=args.sparse
     )
 
     # Create directories

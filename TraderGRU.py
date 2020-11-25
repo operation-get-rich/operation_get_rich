@@ -6,7 +6,7 @@ from torch.autograd import Variable
 
 
 class TraderGRU(nn.Module):
-    def __init__(self, input_size, hidden_size, hard=False):
+    def __init__(self, input_size, hidden_size, hard=False, sparse=True):
         super(TraderGRU, self).__init__()
 
         self.input_size = input_size  # 7 (open, close, low, high, volume, vwap, ema)
@@ -34,6 +34,7 @@ class TraderGRU(nn.Module):
         )
 
         self.hard = hard
+        self.sparse = sparse
 
     def sample_gumbel(self, shape, eps=1e-20):
         U = torch.rand(shape).cuda()
@@ -81,12 +82,14 @@ class TraderGRU(nn.Module):
 
             # Action mask to decide trade or not to trade
             temperature = 0.05
-            action_logit = self.action_layer(hidden_state)  # batch x 1
-            action = self.gumbel_softmax_sample(action_logit, temperature, hard=self.hard)
-
             curr_out = self.output_layer(hidden_state)  # shape: batch x 1
+            curr_out = torch.tanh(curr_out)
 
-            curr_out = torch.tanh(curr_out) * action
+            if self.sparse:
+                action_logit = self.action_layer(hidden_state)  # batch x 1
+                action = self.gumbel_softmax_sample(action_logit, temperature, hard=self.hard)
+                curr_out = curr_out * action
+
             outputs.append(curr_out)
 
         outputs = torch.stack(outputs).squeeze(-1)
