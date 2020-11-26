@@ -81,7 +81,7 @@ class PercentChangeNormalizer:
 
 class StockDataset(torch.utils.data.Dataset):
     """
-    Responsible to return batches of `gaped_up_stocks_early_volume_1e5_gap_10` stock data segments.
+    Responsible to return batches of `alpaca_gaped_up_stocks_early_volume_1e5_gap_10` stock data segments.
     """
 
     def __init__(self, data_folder, split, should_add_technical_indicator=False):
