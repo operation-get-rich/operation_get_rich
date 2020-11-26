@@ -1,7 +1,14 @@
 import os
+import signal
 import time
 from datetime import datetime
 from shutil import copyfile
+
+DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S%z'
+
+
+def convert_pandas_timestamp_to_formatted_string(timestamp):
+    return timestamp.strftime(DATETIME_FORMAT)
 
 
 def get_all_ticker_names():
@@ -66,6 +73,7 @@ def get_date_string_legacy(time):
     return ' '.join(time.isoformat().split('T'))
 
 
+# decorator
 def timeit(method):
     def timed(*args, **kw):
         ts = time.time()
@@ -82,6 +90,22 @@ def timeit(method):
         return result
 
     return timed
+
+
+def retry_download(method, retry_count=2, timeout=30):
+    def time_out_handler(signum, frame):
+        raise TimeoutError("Process taken too long")
+
+    def _retry_download(*args, **kwargs):
+        for _ in range(retry_count):
+            try:
+                signal.signal(signal.SIGALRM, time_out_handler)
+                signal.alarm(timeout)
+                return method(*args, **kwargs)
+            except Exception:
+                pass
+
+    return _retry_download
 
 
 def is_time2_greater(time1, time2):
@@ -119,8 +143,8 @@ def convert_gapped_up_stocks_directory_to_organized_by_date(
     this funciton will create a new directory organized by dates, copying all the files in `gapped_up_stocks_dir`
 
     Example Params:
-        gapped_up_stocks_dir = './gaped_up_stocks_early_volume_1e5_gap_10'
-        dest_dir = './gaped_up_stocks_early_volume_1e5_gap_10_by_date'
+        gapped_up_stocks_dir = './alpaca_gaped_up_stocks_early_volume_1e5_gap_10'
+        dest_dir = './alpaca_gaped_up_stocks_early_volume_1e5_gap_10_by_date'
     """
     for stock_dir in sorted(os.listdir(gapped_up_stocks_dir)):
         for stock_file in sorted(os.listdir(f'{gapped_up_stocks_dir}/{stock_dir}')):
@@ -136,3 +160,8 @@ def get_current_filename(dunder_file):
 
 def get_current_directory(dunder_file):
     return os.path.dirname(os.path.realpath(dunder_file))
+
+
+def format_usd(capital):
+    capital_formatted = '${:,.2f}'.format(capital)
+    return capital_formatted
