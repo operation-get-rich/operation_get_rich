@@ -9,7 +9,7 @@ import pandas
 from pandas import DataFrame
 
 from definitions import PROJECT_ROOT_DIR
-from utils import create_dir, DATETIME_FORMAT
+from utils import create_dir, DATETIME_FORMAT, create_file
 
 SEGMENTER_NAME = os.path.basename(__file__).split('.')[0]  # remove .py
 read_dir = f'polygon_stock_prices'
@@ -122,6 +122,7 @@ def update_finished_filepaths(state, stock_path):
 
 
 def update_state(update_func=None, *args, **kwargs):
+    create_file(STATE_FILE_LOCATION)
     with open(STATE_FILE_LOCATION, 'r') as state_file:
         state = json.load(state_file)
 

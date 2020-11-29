@@ -26,6 +26,12 @@ def _get_ticker_names(file_name):
     return ticker_names
 
 
+def create_file(path):
+    if not os.path.exists(path):
+        with open(path, 'w'):
+            os.utime(path, None)
+
+
 def create_dir(path):
     if not os.path.exists(path):
         os.mkdir(path)
