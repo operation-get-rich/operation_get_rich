@@ -9,3 +9,4 @@ gaped_up_stocks/
 __pycache__/
 *.output
 !gaped_up_stocks_early_volume_1e5_gap_10_statistics.csv
+alpaca_paper_trade_cache.json

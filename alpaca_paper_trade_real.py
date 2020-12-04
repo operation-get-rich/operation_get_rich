@@ -1,20 +1,24 @@
 import asyncio
+import datetime
 import json
 import math
 import os
+from datetime import timedelta, date
 from statistics import mean
 
 import alpaca_trade_api as tradeapi
 import matplotlib.pyplot as plt
 import pandas as pd
+import pytz
 import torch
 import websockets
 from alpaca_trade_api import StreamConn
+from dateutil.parser import parse
 
 from TraderGRU import TraderGRU
 from config import PAPER_ALPACA_API_KEY, PAPER_ALPACA_SECRET_KEY, PAPER_ALPACA_BASE_URL
 from stock_dataset import PercentChangeNormalizer as PCN
-from utils import timeit
+from utils import timeit, DATETIME_FORMAT, get_all_ticker_names, US_CENTRAL_TIMEZONE, DATE_FORMAT
 
 model = TraderGRU(
     input_size=7,
@@ -42,7 +46,7 @@ def get_trade_from_model(inputs):
 
 
 # TODO: Update capital and shares owned in the call back of trade updates
-def sell(symbol, shares_owned, trade, capital):
+def sell(symbol, shares_owned, trade, capital, slippage=.005):
     shares_to_sell = math.floor(abs(trade) * shares_owned)
     print(f'Selling {shares_to_sell} of {symbol} @ {format_usd(get_best_bid_price(symbol))}')
     print('bar_state_sell:', bar_state)
@@ -53,12 +57,12 @@ def sell(symbol, shares_owned, trade, capital):
             side=SIDE_SELL,
             type=ORDER_TYPE_LIMIT,
             time_in_force=TIME_IN_FORCE_GTC,
-            limit_price=get_best_bid_price(symbol)
+            limit_price=get_best_bid_price(symbol) * (1 - slippage)
         )
 
 
 # TODO: Update capital and shares owned in the call back of trade updates
-def buy(symbol, trade, capital):
+def buy(symbol, trade, capital, slippage=.005):
     capital_to_use = capital * trade
     shares_to_buy = math.floor(capital_to_use / get_best_ask_price(symbol))
     print(f'Buying {shares_to_buy} of {symbol} @ {format_usd(get_best_ask_price(symbol))}')
@@ -70,7 +74,7 @@ def buy(symbol, trade, capital):
             side='buy',
             type='limit',
             time_in_force='gtc',
-            limit_price=get_best_ask_price(symbol)
+            limit_price=get_best_ask_price(symbol) * (1 + slippage)
         )
 
 
@@ -132,6 +136,8 @@ SIDE_SELL = 'sell'
 SIDE_BUY = 'buy'
 ORDER_TYPE_LIMIT = 'limit'
 TIME_IN_FORCE_GTC = 'gtc'
+
+CACHE_LOCATION = './alpaca_paper_trade_cache.json'
 
 
 def get_best_bid_price(symbol):
@@ -306,8 +312,9 @@ async def on_minute_bars(conn, channel, bar):
         'timestamp': 1605628500000
     }
     """
-    print('bar', bar)
-    print('bar_state', bar_state)
+    print(bar)
+    with open('alpaca_paper_trade_bar.txt', 'a') as f:
+        f.write(f'{str(bar._raw)}\n')
     await handle_bar(bar)
 
 
@@ -325,11 +332,95 @@ async def on_quote(conn, channel, quote):
            'timestamp': 1605730275616000000})
     """
     print(quote)
-    await handle_quote(quote)
+    with open('alpaca_paper_trade_quote.txt', 'a') as f:
+        f.write(f'{str(quote._raw)}\n')
+    # print(f'ask_exchange {quote.askexchange}', quote.timestamp.strftime(DATETIME_FORMAT))
+    # await handle_quote(quote)
 
 
-conn.run([
-    'Q.AYRO', 'AM.AYRO',
-    # 'Q.LGVW', 'AM.LGVW',
-    # 'Q.AMRN', 'AM.AMRN'
-    'trade_updates'])
+GAP_UP_THRESHOLD = .10
+VOLUME_THRESHOLD = 1e05
+COMPANY_STEPS = 200
+
+
+def main():
+    gapped_up_symbols = find_gapped_up_symbols()
+    listeners = ['trade_updates']
+    for symbol, gap, volume in gapped_up_symbols:
+        listeners.append(f'Q.{symbol}')
+        listeners.append(f'AM.{symbol}')
+    conn.run(listeners)
+
+
+def find_gapped_up_symbols():
+    today = datetime.datetime.now(pytz.timezone(US_CENTRAL_TIMEZONE))
+
+    cache = read_cache()
+
+    if today.date().strftime(DATE_FORMAT) in cache:
+        return cache[today.date().strftime(DATE_FORMAT)]
+
+    eight_am = today.replace(hour=8, minute=30, second=0, microsecond=0)
+    yesterday = eight_am - timedelta(days=1)
+    eight_am_str = get_alpaca_time_str_format(eight_am)
+    yesterday_str = get_alpaca_time_str_format(yesterday)
+    gapped_up_symbols = []
+    start = 0
+    tickers = get_all_ticker_names()
+    while start < len(tickers):
+        end = min(len(tickers), start + COMPANY_STEPS)
+
+        print(f'Downloading tickers: {tickers[start:end]}')
+        barset = api.get_barset(
+            symbols=','.join(tickers[start:end]),
+            timeframe='15Min',
+            start=yesterday_str,
+            end=eight_am_str,
+        )  # TODO: Use Polygon barset api when using Polygon trained model
+
+        for symbol in barset:
+            open_index = None
+            for i in range(len(barset[symbol])):
+                if barset[symbol][i].t.date() == today.date():
+                    open_index = i
+                    break
+            if not open_index:
+                continue
+            cummulative_volume = sum([barset[symbol][i].v for i in range(open_index, len(barset[symbol]))])
+            open_price = barset[symbol][open_index].o
+            prev_day_close_price = barset[symbol][0].c
+            gap = (open_price / prev_day_close_price) - 1
+            is_price_gapped_up = gap > GAP_UP_THRESHOLD
+            if is_price_gapped_up and cummulative_volume > VOLUME_THRESHOLD:
+                gapped_up_symbols.append((symbol, gap, cummulative_volume))
+        start += COMPANY_STEPS
+
+    cache[today.date().strftime(DATE_FORMAT)] = gapped_up_symbols
+    write_cache(cache)
+
+    return gapped_up_symbols
+
+
+def write_cache(cache):
+    with open(CACHE_LOCATION, 'w') as f:
+        json.dump(cache, f)
+
+
+def read_cache():
+    try:
+        with open(CACHE_LOCATION) as f:
+            cache = json.load(f)
+    except FileNotFoundError:
+        cache = {}
+    return cache
+
+
+def get_alpaca_time_str_format(
+        the_datetime  # type: datetime
+):
+    alpaca_time_str = 'T'.join(the_datetime.strftime(DATETIME_FORMAT).split())
+    alpaca_time_str = alpaca_time_str[0:-2] + ':' + alpaca_time_str[-2:]
+    return alpaca_time_str
+
+
+main()
