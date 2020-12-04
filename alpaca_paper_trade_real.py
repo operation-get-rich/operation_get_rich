@@ -2,23 +2,19 @@ import asyncio
 import datetime
 import json
 import math
-import os
-from datetime import timedelta, date
+from datetime import timedelta
 from statistics import mean
 
 import alpaca_trade_api as tradeapi
-import matplotlib.pyplot as plt
 import pandas as pd
 import pytz
 import torch
-import websockets
 from alpaca_trade_api import StreamConn
-from dateutil.parser import parse
 
 from TraderGRU import TraderGRU
 from config import PAPER_ALPACA_API_KEY, PAPER_ALPACA_SECRET_KEY, PAPER_ALPACA_BASE_URL
 from stock_dataset import PercentChangeNormalizer as PCN
-from utils import timeit, DATETIME_FORMAT, get_all_ticker_names, US_CENTRAL_TIMEZONE, DATE_FORMAT
+from utils import DATETIME_FORMAT, get_all_ticker_names, US_CENTRAL_TIMEZONE, DATE_FORMAT, format_usd
 
 model = TraderGRU(
     input_size=7,
@@ -76,11 +72,6 @@ def buy(symbol, trade, capital, slippage=.005):
             time_in_force='gtc',
             limit_price=get_best_ask_price(symbol) * (1 + slippage)
         )
-
-
-def format_usd(capital):
-    capital_formatted = '${:,.2f}'.format(capital)
-    return capital_formatted
 
 
 def compute_vwap(price_volume_products, volumes, ta_period=14):
@@ -150,19 +141,6 @@ def get_best_ask_price(symbol):
 
 async def handle_bar(bar):
     symbol = bar.symbol
-    if symbol not in bar_state:
-        bar_state[symbol] = {
-            RAW_FEATURES_KEY: [],
-            MODEL_INPUTS_KEY: [],
-            VOLUMES_KEY: [],
-            PRICE_VOLUME_PRODUCTS_KEY: [],
-            CLOSE_PRICES_KEY: [],
-            TRADES_KEY: [],
-            CAPITAL_KEY: 10000,  # TODO: Figure out how to divide the capital
-            SHARES_OWNED_KEY: 0,
-            TOTAL_ASSETS_PROGRESSION_KEY: {},
-            TRADES_BY_TIME_KEY: {},
-        }
     bar_state[symbol][RAW_FEATURES_KEY].append(
         [
             bar.start,
@@ -331,11 +309,10 @@ async def on_quote(conn, channel, quote):
            'symbol': 'AAPL',
            'timestamp': 1605730275616000000})
     """
-    print(quote)
-    with open('alpaca_paper_trade_quote.txt', 'a') as f:
-        f.write(f'{str(quote._raw)}\n')
+    # with open('alpaca_paper_trade_quote.txt', 'a') as f:
+    #     f.write(f'{str(quote._raw)}\n')
     # print(f'ask_exchange {quote.askexchange}', quote.timestamp.strftime(DATETIME_FORMAT))
-    # await handle_quote(quote)
+    await handle_quote(quote)
 
 
 GAP_UP_THRESHOLD = .10
@@ -345,10 +322,26 @@ COMPANY_STEPS = 200
 
 def main():
     gapped_up_symbols = find_gapped_up_symbols()
-    listeners = ['trade_updates']
+    capital = 100000  # TODO: Figure out how to get current account's capital
+    capital_per_symbol = math.floor(capital / len(gapped_up_symbols))
+    listeners = []
     for symbol, gap, volume in gapped_up_symbols:
+        if symbol not in bar_state:
+            bar_state[symbol] = {
+                RAW_FEATURES_KEY: [],
+                MODEL_INPUTS_KEY: [],
+                VOLUMES_KEY: [],
+                PRICE_VOLUME_PRODUCTS_KEY: [],
+                CLOSE_PRICES_KEY: [],
+                TRADES_KEY: [],
+                CAPITAL_KEY: capital_per_symbol,
+                SHARES_OWNED_KEY: 0,
+                TOTAL_ASSETS_PROGRESSION_KEY: {},
+                TRADES_BY_TIME_KEY: {},
+            }
         listeners.append(f'Q.{symbol}')
         listeners.append(f'AM.{symbol}')
+    listeners.append('trade_updates')
     conn.run(listeners)
 
 
