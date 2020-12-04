@@ -6,6 +6,7 @@ import random
 
 import pandas
 import torch.utils.data
+from ta.momentum import RSIIndicator
 
 from ta.trend import EMAIndicator
 from ta.volume import VolumeWeightedAveragePrice
@@ -28,6 +29,7 @@ VWAP_COLUMN_INDEX = 5
 EMA_COLUMN_INDEX = 6
 
 MARKET_OPEN = datetime.time(hour=10, minute=0, second=0)
+
 
 class PercentChangeNormalizer:
     @classmethod
@@ -107,7 +109,7 @@ class StockDataset(torch.utils.data.Dataset):
     def __getitem__(self, index):
         selected_segment = self.segment_list[index]
         selected_segment_df = pandas.read_csv(filepath_or_buffer=selected_segment)
-        
+
         # Get time
         time = pandas.to_datetime(selected_segment_df['time'])
         is_premarket = pandas.Series([val.time() < MARKET_OPEN for val in time])
@@ -122,10 +124,16 @@ class StockDataset(torch.utils.data.Dataset):
                 volume=selected_segment_df.volume,
                 n=TECHNICAL_INDICATOR_PERIOD
             ).vwap
+
             selected_segment_df['ema'] = EMAIndicator(
                 close=selected_segment_df.close,
                 n=TECHNICAL_INDICATOR_PERIOD
             ).ema_indicator()
+
+            selected_segment_df['rsi'] = RSIIndicator(
+                close=selected_segment_df.close,
+                n=TECHNICAL_INDICATOR_PERIOD
+            ).rsi()
 
         selected_segment_np = selected_segment_df[TECHNICAL_INDICATOR_PERIOD:].to_numpy()
 
@@ -139,7 +147,7 @@ class StockDataset(torch.utils.data.Dataset):
 
             is_premarket = np.hstack(
                 [is_premarket,
-                    np.zeros((SEQUENCE_LENGTH - selected_segment_length))]
+                 np.zeros((SEQUENCE_LENGTH - selected_segment_length))]
             )
 
             return selected_segment_np, selected_segment_length, is_premarket
