@@ -1,10 +1,12 @@
+import json
 import os
-import signal
 import time
 from datetime import datetime
 from shutil import copyfile
 
 DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S%z'
+DATE_FORMAT = '%Y-%m-%d '
+US_CENTRAL_TIMEZONE = 'US/Central'
 
 
 def convert_pandas_timestamp_to_formatted_string(timestamp):
@@ -30,6 +32,8 @@ def create_file(path):
     if not os.path.exists(path):
         with open(path, 'w'):
             os.utime(path, None)
+        return True
+    return False
 
 
 def create_dir(path):
@@ -79,7 +83,6 @@ def get_date_string_legacy(time):
     return ' '.join(time.isoformat().split('T'))
 
 
-# decorator
 def timeit(method):
     def timed(*args, **kw):
         ts = time.time()
@@ -108,7 +111,8 @@ def retry_download(method, retry_count=2, timeout=30):
                 signal.signal(signal.SIGALRM, time_out_handler)
                 signal.alarm(timeout)
                 return method(*args, **kwargs)
-            except Exception:
+            except Exception as exc:
+                print('Exception: ', exc)
                 pass
 
     return _retry_download
@@ -171,3 +175,23 @@ def get_current_directory(dunder_file):
 def format_usd(capital):
     capital_formatted = '${:,.2f}'.format(capital)
     return capital_formatted
+
+
+def update_state(state_file_location, update_func=None, *args, **kwargs):
+    created = create_file(state_file_location)
+    if created:
+        state = {}
+    else:
+        with open(state_file_location, 'r') as state_file:
+            state = json.load(state_file)
+
+    if update_func:
+        update_func(state, *args, **kwargs)
+
+    if '_meta' in state:
+        if 'first_state_update_call' not in state['_meta']:
+            state['_meta']['first_state_update_call'] = datetime.datetime.now().strftime(DATETIME_FORMAT)
+        state['_meta']['latest_state_update_call'] = datetime.datetime.now().strftime(DATETIME_FORMAT)
+
+    with open(state_file_location, 'w') as state_file:
+        json.dump(state, state_file)
