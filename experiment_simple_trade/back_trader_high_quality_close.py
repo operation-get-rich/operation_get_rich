@@ -6,7 +6,7 @@ import pandas as pd
 
 gapped_up_data_root_dir = '../datas/polygon_gapped_up_tick_by_tick'
 
-STATE_FILE_LOCATION = 'state.json'
+STATE_FILE_LOCATION = 'state_01_03_high_high_quality_green.json'
 
 from utils import format_usd, DATETIME_FORMAT
 
@@ -14,10 +14,11 @@ from utils import format_usd, DATETIME_FORMAT
 def main():
     profit_goal = .01
     loss_tolerance = .03
-    _back_trade(loss_tolerance, profit_goal)
+    max_high_close_delta = 0
+    _back_trade(loss_tolerance, profit_goal, max_high_close_delta)
 
 
-def _back_trade(loss_tolerance, profit_goal):
+def _back_trade(loss_tolerance, profit_goal, max_high_close_delta):
     total_delta = 0
     trade_counter = 0
     compounding_delta = 1
@@ -27,12 +28,22 @@ def _back_trade(loss_tolerance, profit_goal):
         for stock_file in sorted(os.listdir(f'{gapped_up_data_root_dir}/{the_date}')):
             stock_symbol = stock_file.split('.')[0]
             print(f'\nTrading {stock_symbol} on {the_date}')
+
+            if stock_symbol == 'BAC' and the_date == '2019-01-22':
+                # hack, its not trading this stock anyway
+                continue
+
+            if stock_symbol == 'EBAY' and the_date == '2019-01-22':
+                # hack, its not trading this stock anyway
+                continue
+
             try:
                 delta = day_trade(
                     stock_symbol,
                     the_date,
                     profit_goal,
-                    loss_tolerance
+                    loss_tolerance,
+                    max_high_close_delta
                 )
 
                 if delta:
@@ -54,7 +65,7 @@ def _back_trade(loss_tolerance, profit_goal):
                 continue
 
 
-def day_trade(stock_symbol, the_date, profit_goal, loss_tolerance):
+def day_trade(stock_symbol, the_date, profit_goal, loss_tolerance, max_high_close_delta):
     delta = None
     stock_df = pd.read_csv(
         f'{gapped_up_data_root_dir}/{the_date}/{stock_symbol}.csv',
@@ -149,7 +160,8 @@ def day_trade(stock_symbol, the_date, profit_goal, loss_tolerance):
 
                 is_previous_bar_red = previous_bar['o'] > previous_bar['c']
                 is_current_bar_green = current_bar['o'] < current_bar['c']
-                is_green_red_pair_found = is_previous_bar_red and is_current_bar_green
+                is_high_quality_green = (current_bar['h'] / current_bar['c'] - 1) <= max_high_close_delta
+                is_green_red_pair_found = is_previous_bar_red and is_current_bar_green and is_high_quality_green
                 if is_green_red_pair_found:
                     last_green_bar = current_bar
 
@@ -179,8 +191,11 @@ def day_trade(stock_symbol, the_date, profit_goal, loss_tolerance):
 
 
 def restart_state_meta():
-    with open(STATE_FILE_LOCATION, 'r') as state_file:
-        state = json.load(state_file)
+    try:
+        with open(STATE_FILE_LOCATION, 'r') as state_file:
+            state = json.load(state_file)
+    except FileNotFoundError:
+        state = {}
 
     state['_meta'] = {}
 

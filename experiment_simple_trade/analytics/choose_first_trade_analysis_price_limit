@@ -1,3 +1,4 @@
+
 import datetime
 import json
 
@@ -10,7 +11,7 @@ from utils import format_usd, DATETIME_FORMAT
 mpl.use('macosx')
 
 STATE_FILE_LOCATION = 'backtrader_state_analysis.json'
-BACK_TRADER_STATE_FILE = '../state_02_03_high.json'
+BACK_TRADER_STATE_FILE = '../state_polygon_01_03_high.json'
 STRATEGY_NAME = __file__.split('.')[0].split('/')[-1]
 
 
@@ -68,9 +69,9 @@ def main():
     print(f'Accuracy: {accuracy * 100}%')
     print(f'Max delta: {max(deltas)}')
     print(f'Min delta: {min(deltas)}')
-    # plt.plot(backtrader_state['performance'].keys(), capital_progressions)
-    # plt.xticks(rotation=90)
-    # plt.show()
+    plt.plot(dates, capital_progressions)
+    plt.xticks(rotation=90)
+    plt.show()
 
     update_state(update_strategy_state, capital_progressions, accuracy, deltas, dates)
 

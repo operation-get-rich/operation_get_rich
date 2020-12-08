@@ -3,10 +3,13 @@ import json
 import os
 
 import pandas as pd
+from ta.trend import EMAIndicator
+from ta.volume import VolumeWeightedAveragePrice
 
-gapped_up_data_root_dir = '../datas/polygon_gapped_up_tick_by_tick'
+gapped_up_data_root_dir_ticks = '../datas/polygon_gapped_up_tick_by_tick'
+gapped_up_data_root_dir_minutes = '../datas/polygon_early_day_gap_segmenter_parallel'
 
-STATE_FILE_LOCATION = 'state.json'
+STATE_FILE_LOCATION = 'state_polygon_01_03_high_between_ema_and_vwap.json'
 
 from utils import format_usd, DATETIME_FORMAT
 
@@ -21,10 +24,10 @@ def _back_trade(loss_tolerance, profit_goal):
     total_delta = 0
     trade_counter = 0
     compounding_delta = 1
-    for the_date in sorted(os.listdir(gapped_up_data_root_dir)):
+    for the_date in sorted(os.listdir(gapped_up_data_root_dir_ticks)):
         if '.' in the_date:
             continue
-        for stock_file in sorted(os.listdir(f'{gapped_up_data_root_dir}/{the_date}')):
+        for stock_file in sorted(os.listdir(f'{gapped_up_data_root_dir_ticks}/{the_date}')):
             stock_symbol = stock_file.split('.')[0]
             print(f'\nTrading {stock_symbol} on {the_date}')
             try:
@@ -54,18 +57,43 @@ def _back_trade(loss_tolerance, profit_goal):
                 continue
 
 
+def find_ema_and_vwap(stock_df_minutes, buy_time):
+    for i in range(len(stock_df_minutes)):
+        row = stock_df_minutes.iloc[i]
+        in_the_same_hour_minute = (pd.to_datetime(buy_time) - pd.to_datetime(row.time)).total_seconds() < 60
+        if in_the_same_hour_minute:
+            break
+    return row.ema, row.vwap
+
+
 def day_trade(stock_symbol, the_date, profit_goal, loss_tolerance):
     delta = None
-    stock_df = pd.read_csv(
-        f'{gapped_up_data_root_dir}/{the_date}/{stock_symbol}.csv',
+    stock_df_ticks = pd.read_csv(
+        f'{gapped_up_data_root_dir_ticks}/{the_date}/{stock_symbol}.csv',
         parse_dates=['sip_timestamp'],
     )
+
+    stock_df_minutes = pd.read_csv(
+        f'{gapped_up_data_root_dir_minutes}/{the_date}/{stock_symbol}_{the_date}.csv',
+        parse_dates=['time']
+    )
+    stock_df_minutes['vwap'] = VolumeWeightedAveragePrice(
+        high=stock_df_minutes.high,
+        low=stock_df_minutes.low,
+        close=stock_df_minutes.close,
+        volume=stock_df_minutes.volume
+    ).vwap
+
+    stock_df_minutes['ema'] = EMAIndicator(
+        close=stock_df_minutes.close,
+    ).ema_indicator()
+
     bars = {}
     bars_list = []
     is_green_red_pair_found = False
     last_green_bar = None
     buy_price = None
-    for i in range(len(stock_df)):
+    for i in range(len(stock_df_ticks)):
         (
             sip_timestamp,
             bid_price,
@@ -74,7 +102,7 @@ def day_trade(stock_symbol, the_date, profit_goal, loss_tolerance):
             ask_price,
             ask_size,
             ask_exchange
-        ) = stock_df.iloc[i]
+        ) = stock_df_ticks.iloc[i]
 
         bid_price = float(bid_price)
         bid_size = float(bid_size)
@@ -89,9 +117,13 @@ def day_trade(stock_symbol, the_date, profit_goal, loss_tolerance):
 
         if not buy_price and is_green_red_pair_found:
             if ask_price > last_green_bar['h']:
-                buy_time = sip_timestamp
-                buy_price = ask_price
-                print(f'Buying {stock_symbol} @ {buy_time} {format_usd(buy_price)}')
+                ema, vwap = find_ema_and_vwap(stock_df_minutes, sip_timestamp)
+                if ema < ask_price < vwap:
+                    buy_time = sip_timestamp
+                    buy_price = ask_price
+                    ema_at_buy_time = ema
+                    vwap_at_buy_time = vwap
+                    print(f'Buying {stock_symbol} @ {buy_time} {format_usd(buy_price)}')
 
         if buy_price:
             if (
@@ -112,6 +144,8 @@ def day_trade(stock_symbol, the_date, profit_goal, loss_tolerance):
                     buy_price=buy_price,
                     sell_price=sell_price,
                     sell_time=sell_time,
+                    ema_at_buy_time=ema_at_buy_time,
+                    vwap_at_buy_time=vwap_at_buy_time,
                     stock_symbol=stock_symbol,
                     the_date=the_date
                 )
@@ -134,10 +168,10 @@ def day_trade(stock_symbol, the_date, profit_goal, loss_tolerance):
         else:
             bars[hour_minute]['h'] = max(ask_price, bars[hour_minute]['h'])
 
-        if i + 1 >= len(stock_df):
+        if i + 1 >= len(stock_df_ticks):
             break
 
-        next_stock_df = stock_df.iloc[i + 1]
+        next_stock_df = stock_df_ticks.iloc[i + 1]
         next_hour_minute = (next_stock_df.sip_timestamp.hour, next_stock_df.sip_timestamp.minute)
         if next_hour_minute != hour_minute:
             bars[hour_minute]['c'] = ask_price
@@ -150,6 +184,7 @@ def day_trade(stock_symbol, the_date, profit_goal, loss_tolerance):
                 is_previous_bar_red = previous_bar['o'] > previous_bar['c']
                 is_current_bar_green = current_bar['o'] < current_bar['c']
                 is_green_red_pair_found = is_previous_bar_red and is_current_bar_green
+
                 if is_green_red_pair_found:
                     last_green_bar = current_bar
 
@@ -179,8 +214,11 @@ def day_trade(stock_symbol, the_date, profit_goal, loss_tolerance):
 
 
 def restart_state_meta():
-    with open(STATE_FILE_LOCATION, 'r') as state_file:
-        state = json.load(state_file)
+    try:
+        with open(STATE_FILE_LOCATION, 'r') as state_file:
+            state = json.load(state_file)
+    except FileNotFoundError:
+        state = {}
 
     state['_meta'] = {}
 
@@ -189,8 +227,11 @@ def restart_state_meta():
 
 
 def update_state(update_func=None, *args, **kwargs):
-    with open(STATE_FILE_LOCATION, 'r') as state_file:
-        state = json.load(state_file)
+    try:
+        with open(STATE_FILE_LOCATION, 'r') as state_file:
+            state = json.load(state_file)
+    except FileNotFoundError:
+        state = {}
 
     if update_func:
         update_func(state, *args, **kwargs)
@@ -212,7 +253,10 @@ def update_delta_stats_state(state, average_delta, compounding_delta, total_delt
     }
 
 
-def update_performance_state(state, delta, buy_time, buy_price, sell_price, sell_time, stock_symbol, the_date):
+def update_performance_state(state, delta, buy_time, buy_price, sell_price, sell_time,
+                             ema_at_buy_time,
+                             vwap_at_buy_time,
+                             stock_symbol, the_date):
     if 'performance' not in state:
         state['performance'] = {}
     node = {
@@ -221,6 +265,8 @@ def update_performance_state(state, delta, buy_time, buy_price, sell_price, sell
         'sell_price': sell_price,
         'buy_time': buy_time.strftime(DATETIME_FORMAT),
         'sell_time': sell_time.strftime(DATETIME_FORMAT),
+        'ema_at_buy_time': ema_at_buy_time,
+        'vwap_at_buy_time': vwap_at_buy_time,
     }
     if the_date in state['performance']:
         state['performance'][the_date][stock_symbol] = node

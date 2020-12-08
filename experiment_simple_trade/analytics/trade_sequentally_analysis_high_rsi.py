@@ -10,7 +10,7 @@ from utils import format_usd, DATETIME_FORMAT
 mpl.use('macosx')
 
 STATE_FILE_LOCATION = 'backtrader_state_analysis.json'
-BACK_TRADER_STATE_FILE = '../state_polygon_01_03_high.json'
+BACK_TRADER_STATE_FILE = '../state_polygon_01_03_minute_chart_bars.json'
 STRATEGY_NAME = __file__.split('.')[0].split('/')[-1]
 
 
@@ -37,7 +37,7 @@ def main():
     capital_progressions = []
     deltas = []
     dates = []
-    for the_date in backtrader_state['performance']:
+    for the_date in sorted(backtrader_state['performance'].keys()):
         symbol_trade_pairs = [
             (key, value) for key, value in backtrader_state['performance'][the_date].items()
         ]
@@ -49,6 +49,8 @@ def main():
         open_trade = None
         for symbol, trade in symbol_trade_pairs:
             if not open_trade or parse(trade['buy_time']) > parse(open_trade['sell_time']):
+                if trade['rsi_1m_before'] < 59:
+                    continue
                 print(f'\nTrading Stock Trade @ {the_date}: {symbol}, {trade["buy_time"]}')
                 buy_price = trade['buy_price']
                 sell_price = trade['sell_price']

@@ -10,7 +10,7 @@ from utils import format_usd, DATETIME_FORMAT
 mpl.use('macosx')
 
 STATE_FILE_LOCATION = 'backtrader_state_analysis.json'
-BACK_TRADER_STATE_FILE = '../state_polygon_01_03_high.json'
+BACK_TRADER_STATE_FILE = '../state_polygon_01_03_minute_chart_bars.json'
 STRATEGY_NAME = __file__.split('.')[0].split('/')[-1]
 
 
@@ -37,27 +37,33 @@ def main():
     capital_progressions = []
     deltas = []
     dates = []
-    for the_date in backtrader_state['performance']:
-        symbol_trade_pairs = [
-            (key, value) for key, value in backtrader_state['performance'][the_date].items()
-        ]
+    for the_date in sorted(list(backtrader_state['performance'].keys())):
+        earliest_stock_trade = None
+        earliest_symbol = None
+        for stock_symbol in backtrader_state['performance'][the_date]:
+            stock_trade = backtrader_state['performance'][the_date][stock_symbol]
 
-        symbol_trade_pairs.sort(
-            key=lambda x: x[1]['buy_time']
-        )
+            if stock_trade['rsi'] < 60:
+                continue
 
-        open_trade = None
-        for symbol, trade in symbol_trade_pairs:
-            if not open_trade or parse(trade['buy_time']) > parse(open_trade['sell_time']):
-                print(f'\nTrading Stock Trade @ {the_date}: {symbol}, {trade["buy_time"]}')
-                buy_price = trade['buy_price']
-                sell_price = trade['sell_price']
-                delta = ((sell_price / buy_price) - 1) * 100
-                deltas.append(delta)
-                print(f'Delta: {delta}')
-                capital *= ((sell_price / buy_price))
-                print(f'Capital {format_usd(capital)}')
-                open_trade = trade
+            if earliest_stock_trade is None:
+                earliest_stock_trade = stock_trade
+                earliest_symbol = stock_symbol
+            buy_time = parse(stock_trade['buy_time'])
+            earliest_buy_time = parse(earliest_stock_trade['buy_time'])
+            if buy_time < earliest_buy_time:
+                earliest_stock_trade = stock_trade
+                earliest_symbol = stock_symbol
+        if not earliest_stock_trade:
+            continue
+        print(f'\nEarliest Stock Trade @ {the_date}: {earliest_symbol}, {earliest_stock_trade["buy_time"]}')
+        print(f'RSI: {earliest_stock_trade["rsi"]}')
+        print(f'Delta: {earliest_stock_trade["delta"]}')
+        buy_price = earliest_stock_trade['buy_price']
+        sell_price = earliest_stock_trade['sell_price']
+        deltas.append(((sell_price / buy_price) - 1) * 100)
+        capital *= ((sell_price / buy_price))
+        print(f'Capital {format_usd(capital)}')
         capital_progressions.append(capital)
         dates.append(the_date)
     print(f'\nAverage Deltas {sum(deltas) / len(deltas)}%')
@@ -65,7 +71,7 @@ def main():
     print(f'Accuracy: {accuracy * 100}%')
     print(f'Max delta: {max(deltas)}')
     print(f'Min delta: {min(deltas)}')
-    plt.plot(backtrader_state['performance'].keys(), capital_progressions)
+    plt.plot(dates, capital_progressions)
     plt.xticks(rotation=90)
     plt.show()
 
@@ -91,6 +97,7 @@ def update_strategy_state(state, capital_progressions, accuracy, deltas, dates):
                 'accuracy': accuracy,
                 'max_delta': max(deltas),
                 'min_delta': min(deltas),
+                'average_delta': sum(deltas) / len(deltas),
                 'dates': dates,
                 'capital_progressions': capital_progressions,
                 'deltas': deltas
