@@ -73,6 +73,7 @@ def _segment_stock(stock_path, gap_up_threshold, volume_threshold):
             if next_time.date() > time.date():
                 pre_market_index = index + 1
                 prev_day_close_price = close_price
+                cumulative_volume = 0
                 continue
 
         if prev_day_close_price is not None:
