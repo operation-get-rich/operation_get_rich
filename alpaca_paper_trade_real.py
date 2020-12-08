@@ -131,6 +131,37 @@ TIME_IN_FORCE_GTC = 'gtc'
 CACHE_LOCATION = './alpaca_paper_trade_cache.json'
 
 
+# TODO: Place this into different file
+class EventTracker:
+    def __init__(
+            self,
+            state_file_location='./alpaca_paper_trade_event_state.json',
+    ):
+        self.state_location = state_file_location
+        try:
+            self.f = open(self.state_location, 'r+')
+        except FileNotFoundError:
+            open(self.state_location, 'w')
+            self.f = open(self.state_location, 'r+')
+
+        try:
+            self.state = json.load(self.f)
+        except json.decoder.JSONDecodeError:
+            self.state = {}
+
+    def track(self, event_type, payload):
+        try:
+            self.state[event_type][datetime.datetime.now().timestamp()] = payload
+        except KeyError:
+            self.state[event_type] = {
+                datetime.datetime.now().timestamp(): payload
+            }
+        json.dump(self.state, self.f)
+
+
+event_tracker = EventTracker()
+
+
 def get_best_bid_price(symbol):
     return max(quote_state[symbol][BID_KEY].values())
 
@@ -140,6 +171,10 @@ def get_best_ask_price(symbol):
 
 
 async def handle_bar(bar):
+    event_tracker.track(
+        event_type='bar_update',
+        payload=bar_state
+    )
     symbol = bar.symbol
     bar_state[symbol][RAW_FEATURES_KEY].append(
         [
@@ -203,6 +238,10 @@ async def handle_bar(bar):
 
 
 async def handle_quote(quote):
+    event_tracker.track(
+        event_type='quote_update',
+        payload=quote_state,
+    )
     symbol = quote.symbol
     if symbol not in quote_state:
         quote_state[symbol] = {
@@ -350,11 +389,12 @@ def find_gapped_up_symbols():
 
     cache = read_cache()
 
-    if today.date().strftime(DATE_FORMAT) in cache:
-        return cache[today.date().strftime(DATE_FORMAT)]
+    cache_date_key = today.date().strftime(DATE_FORMAT)
+    if cache_date_key in cache and cache[cache_date_key]:
+        return cache[cache_date_key]
 
     eight_am = today.replace(hour=8, minute=30, second=0, microsecond=0)
-    yesterday = eight_am - timedelta(days=1)
+    yesterday = eight_am - timedelta(days=3)  # TODO: Get the previous market open, not yesterday
     eight_am_str = get_alpaca_time_str_format(eight_am)
     yesterday_str = get_alpaca_time_str_format(yesterday)
     gapped_up_symbols = []
@@ -388,7 +428,7 @@ def find_gapped_up_symbols():
                 gapped_up_symbols.append((symbol, gap, cummulative_volume))
         start += COMPANY_STEPS
 
-    cache[today.date().strftime(DATE_FORMAT)] = gapped_up_symbols
+    cache[cache_date_key] = gapped_up_symbols
     write_cache(cache)
 
     return gapped_up_symbols
