@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 import json
+import logging
 import math
 from datetime import timedelta
 from statistics import mean
@@ -15,6 +16,15 @@ from TraderGRU import TraderGRU
 from config import PAPER_ALPACA_API_KEY, PAPER_ALPACA_SECRET_KEY, PAPER_ALPACA_BASE_URL
 from stock_dataset import PercentChangeNormalizer as PCN
 from utils import DATETIME_FORMAT, get_all_ticker_names, US_CENTRAL_TIMEZONE, DATE_FORMAT, format_usd
+
+logging.basicConfig(
+    handlers=[
+        logging.FileHandler("alpaca_paper_trade.log"),
+        logging.StreamHandler()
+    ],
+    format='%(asctime)s %(levelname)s %(message)s',
+    level=logging.INFO,
+)
 
 model = TraderGRU(
     input_size=7,
@@ -131,37 +141,6 @@ TIME_IN_FORCE_GTC = 'gtc'
 CACHE_LOCATION = './alpaca_paper_trade_cache.json'
 
 
-# TODO: Place this into different file
-class EventTracker:
-    def __init__(
-            self,
-            state_file_location='./alpaca_paper_trade_event_state.json',
-    ):
-        self.state_location = state_file_location
-        try:
-            self.f = open(self.state_location, 'r+')
-        except FileNotFoundError:
-            open(self.state_location, 'w')
-            self.f = open(self.state_location, 'r+')
-
-        try:
-            self.state = json.load(self.f)
-        except json.decoder.JSONDecodeError:
-            self.state = {}
-
-    def track(self, event_type, payload):
-        try:
-            self.state[event_type][datetime.datetime.now().timestamp()] = payload
-        except KeyError:
-            self.state[event_type] = {
-                datetime.datetime.now().timestamp(): payload
-            }
-        json.dump(self.state, self.f)
-
-
-event_tracker = EventTracker()
-
-
 def get_best_bid_price(symbol):
     return max(quote_state[symbol][BID_KEY].values())
 
@@ -171,10 +150,10 @@ def get_best_ask_price(symbol):
 
 
 async def handle_bar(bar):
-    event_tracker.track(
-        event_type='bar_update',
-        payload=bar_state
-    )
+    logging.info(dict(
+        type='bar_update',
+        payload=dict(bar_state=bar_state)
+    ))
     symbol = bar.symbol
     bar_state[symbol][RAW_FEATURES_KEY].append(
         [
@@ -211,15 +190,10 @@ async def handle_bar(bar):
 
     capital = symbol_bar_state[CAPITAL_KEY]
     shares_owned = symbol_bar_state[SHARES_OWNED_KEY]
-    total_assets_progression = symbol_bar_state[TOTAL_ASSETS_PROGRESSION_KEY]
 
     able_to_compute_ta = len(symbol_bar_state[RAW_FEATURES_KEY]) >= TA_PERIOD
 
     if able_to_compute_ta:
-        current_total_asset = get_best_bid_price(symbol) * shares_owned + capital
-        total_assets_progression[last_time] = current_total_asset
-        print(f'\nCurrent Total Asset (liquid + shares_owned) {format_usd(current_total_asset)}')
-
         last_vwap = compute_vwap(price_volume_products, volumes, ta_period=TA_PERIOD)
         last_ema = compute_ema(close_prices, ta_period=TA_PERIOD)
 
@@ -238,10 +212,10 @@ async def handle_bar(bar):
 
 
 async def handle_quote(quote):
-    event_tracker.track(
-        event_type='quote_update',
-        payload=quote_state,
-    )
+    logging.info(dict(
+        type='quote_update',
+        payload=dict(quote_state=quote_state)
+    ))
     symbol = quote.symbol
     if symbol not in quote_state:
         quote_state[symbol] = {
@@ -329,9 +303,6 @@ async def on_minute_bars(conn, channel, bar):
         'timestamp': 1605628500000
     }
     """
-    print(bar)
-    with open('alpaca_paper_trade_bar.txt', 'a') as f:
-        f.write(f'{str(bar._raw)}\n')
     await handle_bar(bar)
 
 
@@ -351,6 +322,12 @@ async def on_quote(conn, channel, quote):
     # with open('alpaca_paper_trade_quote.txt', 'a') as f:
     #     f.write(f'{str(quote._raw)}\n')
     # print(f'ask_exchange {quote.askexchange}', quote.timestamp.strftime(DATETIME_FORMAT))
+    logging.info(
+        type='quote_state_update',
+        payload=dict(
+            quote_state=quote_state
+        )
+    )
     await handle_quote(quote)
 
 
@@ -359,25 +336,99 @@ VOLUME_THRESHOLD = 1e05
 COMPANY_STEPS = 200
 
 
+def instantiate_bar_state_with_premarket_date(barset):
+    for symbol in barset:
+        logging.info(dict(
+            type='instantiate_bar_state',
+            message=f'Instantiating {symbol}'
+        ))
+        for bar in barset[symbol]:
+            if symbol not in bar_state:
+                bar_state[symbol] = {
+                    RAW_FEATURES_KEY: [],
+                    MODEL_INPUTS_KEY: [],
+                    VOLUMES_KEY: [],
+                    PRICE_VOLUME_PRODUCTS_KEY: [],
+                    CLOSE_PRICES_KEY: [],
+                    TRADES_KEY: [],
+                    CAPITAL_KEY: 0,
+                    SHARES_OWNED_KEY: 0,
+                    TOTAL_ASSETS_PROGRESSION_KEY: {},
+                    TRADES_BY_TIME_KEY: {},
+                }
+
+            bar_state[symbol][RAW_FEATURES_KEY].append(
+                [
+                    bar.t.timestamp(),
+                    bar.o,
+                    bar.c,
+                    bar.l,
+                    bar.h,
+                    bar.v
+                ]
+            )
+
+            symbol_bar_state = bar_state[symbol]
+            last_raw_feature = symbol_bar_state[RAW_FEATURES_KEY][-1]
+            (
+                last_time,
+                last_open_price,
+                last_close_price,
+                last_low_price,
+                last_high_price,
+                last_volume
+            ) = last_raw_feature
+
+            last_typical_price = mean([last_close_price, last_low_price, last_high_price])
+
+            volumes = symbol_bar_state[VOLUMES_KEY]
+            volumes.append(last_volume)
+
+            price_volume_products = symbol_bar_state[PRICE_VOLUME_PRODUCTS_KEY]
+            price_volume_products.append(last_volume * last_typical_price)
+
+            close_prices = symbol_bar_state[CLOSE_PRICES_KEY]
+            close_prices.append(last_close_price)
+
+            able_to_compute_ta = len(symbol_bar_state[RAW_FEATURES_KEY]) >= TA_PERIOD
+
+            if able_to_compute_ta:
+                last_vwap = compute_vwap(price_volume_products, volumes, ta_period=TA_PERIOD)
+                last_ema = compute_ema(close_prices, ta_period=TA_PERIOD)
+
+                last_input = [last_open_price, last_close_price, last_low_price, last_high_price, last_volume,
+                              last_vwap,
+                              last_ema]
+                symbol_bar_state[MODEL_INPUTS_KEY].append(last_input)
+        logging.info(dict(
+            type='instantiate_bar_state_finish',
+            message=f'Finished Instantiating {symbol}',
+            payload=dict(bar_state=bar_state)
+        ))
+
+
 def main():
     gapped_up_symbols = find_gapped_up_symbols()
+
+    today = datetime.datetime.now(pytz.timezone(US_CENTRAL_TIMEZONE))
+    yesterday = today - timedelta(days=1)  # TODO: Get the previous market open, not yesterday
+    today_time_str = get_alpaca_time_str_format(today)
+    yesterday_str = get_alpaca_time_str_format(yesterday)
+    barset = api.get_barset(
+        symbols=','.join([s[0] for s in gapped_up_symbols]),
+        timeframe='1Min',
+        start=yesterday_str,
+        end=today_time_str,
+    )  # TODO: Use Polygon barset api when using Polygon trained model
+
+    instantiate_bar_state_with_premarket_date(barset)
+
     capital = 100000  # TODO: Figure out how to get current account's capital
     capital_per_symbol = math.floor(capital / len(gapped_up_symbols))
     listeners = []
     for symbol, gap, volume in gapped_up_symbols:
-        if symbol not in bar_state:
-            bar_state[symbol] = {
-                RAW_FEATURES_KEY: [],
-                MODEL_INPUTS_KEY: [],
-                VOLUMES_KEY: [],
-                PRICE_VOLUME_PRODUCTS_KEY: [],
-                CLOSE_PRICES_KEY: [],
-                TRADES_KEY: [],
-                CAPITAL_KEY: capital_per_symbol,
-                SHARES_OWNED_KEY: 0,
-                TOTAL_ASSETS_PROGRESSION_KEY: {},
-                TRADES_BY_TIME_KEY: {},
-            }
+        assert symbol in bar_state
+        bar_state[symbol][CAPITAL_KEY] = capital_per_symbol
         listeners.append(f'Q.{symbol}')
         listeners.append(f'AM.{symbol}')
     listeners.append('trade_updates')
@@ -394,7 +445,7 @@ def find_gapped_up_symbols():
         return cache[cache_date_key]
 
     eight_am = today.replace(hour=8, minute=30, second=0, microsecond=0)
-    yesterday = eight_am - timedelta(days=3)  # TODO: Get the previous market open, not yesterday
+    yesterday = eight_am - timedelta(days=1)  # TODO: Get the previous market open, not yesterday
     eight_am_str = get_alpaca_time_str_format(eight_am)
     yesterday_str = get_alpaca_time_str_format(yesterday)
     gapped_up_symbols = []
