@@ -53,22 +53,23 @@ def get_trade_from_model(inputs):
 
 
 # TODO: Update capital and shares owned in the call back of trade updates
-def sell(symbol, shares_owned, trade, capital, slippage=.005):
+def sell(symbol, shares_owned, trade, capital, close_price, slippage=.005):
     shares_to_sell = math.ceil(abs(trade) * shares_owned)
     logging.info(dict(
         type='trade_sell',
-        message=f'Selling {shares_to_sell} of {symbol} @ {format_usd(get_best_bid_price(symbol))}',
+        message=f'Selling {shares_to_sell} of {symbol} @ ~{format_usd(close_price)}',
         payload=dict(
             trade=trade,
             capital=capital,
             shares_owned=shares_owned,
             shares_to_sell=shares_to_sell,
+            price=close_price
         )
     ))
     if shares_to_sell > 0:
         # TODO: Temporary now that we know on_account_updates is unreliable update the shares owned here
         bar_state[symbol][SHARES_OWNED_KEY] -= shares_to_sell
-        bar_state[symbol][CAPITAL_KEY] += shares_to_sell * get_best_bid_price(symbol)
+        bar_state[symbol][CAPITAL_KEY] += shares_to_sell * close_price
         api.submit_order(
             symbol=symbol,
             qty=shares_to_sell,
@@ -80,23 +81,24 @@ def sell(symbol, shares_owned, trade, capital, slippage=.005):
 
 
 # TODO: Update capital and shares owned in the call back of trade updates
-def buy(symbol, trade, capital, slippage=.005):
+def buy(symbol, trade, capital, close_price, slippage=.005):
     capital_to_use = capital * trade
-    shares_to_buy = math.floor(capital_to_use / get_best_ask_price(symbol))
+    shares_to_buy = math.floor(capital_to_use / close_price)
     logging.info(dict(
         type='trade_buy',
-        message=f'Buying {shares_to_buy} of {symbol} @ {format_usd(get_best_ask_price(symbol))}',
+        message=f'Buying {shares_to_buy} of {symbol} @ ~{format_usd(close_price)}',
         payload=dict(
             trade=trade,
             capital=capital,
             capital_to_use=capital_to_use,
             shares_to_buy=shares_to_buy,
+            price=close_price
         )
     ))
     if shares_to_buy > 0:
         # TODO: Temporary now that we know on_account_updates is unreliable update the shares owned here
         bar_state[symbol][SHARES_OWNED_KEY] += shares_to_buy
-        bar_state[symbol][CAPITAL_KEY] -= shares_to_buy * get_best_ask_price(symbol)
+        bar_state[symbol][CAPITAL_KEY] -= shares_to_buy * close_price
         api.submit_order(
             symbol=symbol,
             qty=shares_to_buy,
@@ -225,9 +227,9 @@ async def handle_bar(bar):
         symbol_bar_state[TRADES_KEY].append(trade)
 
         if trade > 0:
-            buy(symbol, trade, capital)
+            buy(symbol, trade, capital, last_close_price)
         if trade < 0:
-            sell(symbol, shares_owned, trade, capital)
+            sell(symbol, shares_owned, trade, capital, last_close_price)
     save_bar_state()
     logging.info(dict(
         type='bar_state_update',
