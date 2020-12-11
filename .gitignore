@@ -29,3 +29,4 @@ segmenters/early_day_gap_segmenter_parallel/temp_analyzing_segmenter_console_out
 experiment_simple_trade/state.json
 alpaca_paper_trade.log
 alpaca_paper_trade_12_09_2020.py
+alpaca_paper_trade_real_bar_state.json

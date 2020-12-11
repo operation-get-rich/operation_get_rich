@@ -52,7 +52,6 @@ def get_trade_from_model(inputs):
     return trade
 
 
-# TODO: Update capital and shares owned in the call back of trade updates
 def sell(symbol, shares_owned, trade, capital, close_price, slippage=.005):
     shares_to_sell = math.ceil(abs(trade) * shares_owned)
     logging.info(dict(
@@ -80,7 +79,6 @@ def sell(symbol, shares_owned, trade, capital, close_price, slippage=.005):
         )
 
 
-# TODO: Update capital and shares owned in the call back of trade updates
 def buy(symbol, trade, capital, close_price, slippage=.005):
     capital_to_use = capital * trade
     shares_to_buy = math.floor(capital_to_use / close_price)
