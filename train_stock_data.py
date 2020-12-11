@@ -25,18 +25,24 @@ args = parser.parse_args()
 
 MODEL_OUTPUT_SIZE = 4  # The model predicts: open, close, high, & low of the next bar
 
-def compute_loss(outputs, targets, original_seq_length, batch_seq_length, loss):
+
+def compute_loss(
+        outputs,  # shape: batch_size x seq_len-1 x output_size
+        targets,  # shape: batch_size x seq_len-1 x output_size
+        original_seq_length,  # shape: batch_size
+        loss_function
+):
     loss_train = 0
     total_sequence_length = 0
     for i, osl in enumerate(original_seq_length):
         total_sequence_length += osl
-        current_outputs = outputs[i, 0 : osl, :]
+        current_outputs = outputs[i, 0: osl, :]
         current_outputs = torch.flatten(current_outputs)
 
-        current_labels = targets[i, 0 : osl, :]
+        current_labels = targets[i, 0: osl, :]
         current_labels = torch.flatten(current_labels)
 
-        loss_train += loss(
+        loss_train += loss_function(
             current_outputs,
             current_labels
         )
@@ -44,6 +50,7 @@ def compute_loss(outputs, targets, original_seq_length, batch_seq_length, loss):
     loss_train /= output_size * total_sequence_length
 
     return loss_train
+
 
 def feed_data(data, model):
     use_gpu = torch.cuda.is_available()
@@ -61,9 +68,10 @@ def feed_data(data, model):
 
     outputs = model(inputs)  # seq_len-1 x batch_size x output_size
     outputs = torch.stack(outputs)
-    outputs = outputs.permute(1, 0, 2) # batch_size x seq_len-1 x output_size
+    outputs = outputs.permute(1, 0, 2)  # batch_size x seq_len-1 x output_size
 
     return outputs, targets
+
 
 def train(
         model,  # type: VanillaGRU
@@ -117,11 +125,13 @@ def train(
                 continue
 
             outputs, targets = feed_data(data, model)
+            outputs  # shape: batch_size x seq_len-1 x output_size
+            targets  # shape: batch_size x seq_len-1 x output_size
             loss_train = compute_loss(outputs, targets, original_sequence_lengths, seq_length, loss)
 
             losses_train.append(loss_train.data)
             losses_epoch_train.append(loss_train.data)
-            
+
             model.zero_grad()
             optimizer.zero_grad()
             loss_train.backward()

@@ -415,6 +415,7 @@ def update_barstate(barset):
 
 
 def main():
+    raise ValueError("Don't run it from this branch!")
     gapped_up_symbols = find_gapped_up_symbols()
 
     end_time = get_current_datetime()

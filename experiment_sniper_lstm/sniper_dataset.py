@@ -18,6 +18,9 @@ SEQUENCE_LENGTH = 390
 VOLUME_MEAN = 5236.079151848999
 VOLUME_STD = 17451.76183378195
 
+# TODO: Find VOLUME_MEAN and VOLUME_STD of Polygon dataset
+
+
 OPEN_COLUMN_INDEX = 0
 CLOSE_COLUMN_INDEX = 1
 LOW_COLUMN_INDEX = 2
@@ -27,7 +30,7 @@ VWAP_COLUMN_INDEX = 5
 EMA_COLUMN_INDEX = 6
 
 
-class PercentChangeNormalizer:
+class Normalizer:
     @classmethod
     def normalize_volume(cls, data):
         data = np.copy(data)
@@ -120,7 +123,6 @@ class StockDataset(torch.utils.data.Dataset):
                 close=selected_segment_df.close,
                 n=TECHNICAL_INDICATOR_PERIOD
             ).ema_indicator()
-
             selected_segment_df['rsi'] = RSIIndicator(
                 close=selected_segment_df.close,
                 n=TECHNICAL_INDICATOR_PERIOD
