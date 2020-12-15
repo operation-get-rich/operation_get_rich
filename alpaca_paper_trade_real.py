@@ -52,58 +52,60 @@ def get_trade_from_model(inputs):
     return trade
 
 
-def sell(symbol, shares_owned, trade, capital, close_price, slippage=.005):
+def sell(symbol, shares_owned, trade, capital, slippage=.005):
+    current_price = api.polygon.last_trade(symbol)
     shares_to_sell = math.ceil(abs(trade) * shares_owned)
     logging.info(dict(
         type='trade_sell',
-        message=f'Selling {shares_to_sell} of {symbol} @ ~{format_usd(close_price)}',
+        message=f'Selling {shares_to_sell} of {symbol} @ ~{format_usd(current_price)}',
         payload=dict(
             trade=trade,
             capital=capital,
             shares_owned=shares_owned,
             shares_to_sell=shares_to_sell,
-            price=close_price
+            price=current_price
         )
     ))
     if shares_to_sell > 0:
         # TODO: Temporary now that we know on_account_updates is unreliable update the shares owned here
         bar_state[symbol][SHARES_OWNED_KEY] -= shares_to_sell
-        bar_state[symbol][CAPITAL_KEY] += shares_to_sell * close_price
+        bar_state[symbol][CAPITAL_KEY] += shares_to_sell * current_price
         api.submit_order(
             symbol=symbol,
             qty=shares_to_sell,
             side=SIDE_SELL,
-            type='market',
+            type='limit',
             time_in_force=TIME_IN_FORCE_GTC,
-            # limit_price=get_best_bid_price(symbol) * (1 - slippage)
+            limit_price=str(current_price * (1 - slippage))
         )
 
 
-def buy(symbol, trade, capital, close_price, slippage=.005):
+def buy(symbol, trade, capital, slippage=.005):
     capital_to_use = capital * trade
-    shares_to_buy = math.floor(capital_to_use / close_price)
+    current_price = float(api.polygon.last_trade(symbol).price)
+    shares_to_buy = math.floor(capital_to_use / current_price)
     logging.info(dict(
         type='trade_buy',
-        message=f'Buying {shares_to_buy} of {symbol} @ ~{format_usd(close_price)}',
+        message=f'Buying {shares_to_buy} of {symbol} @ ~{format_usd(current_price)}',
         payload=dict(
             trade=trade,
             capital=capital,
             capital_to_use=capital_to_use,
             shares_to_buy=shares_to_buy,
-            price=close_price
+            price=current_price
         )
     ))
     if shares_to_buy > 0:
         # TODO: Temporary now that we know on_account_updates is unreliable update the shares owned here
         bar_state[symbol][SHARES_OWNED_KEY] += shares_to_buy
-        bar_state[symbol][CAPITAL_KEY] -= shares_to_buy * close_price
+        bar_state[symbol][CAPITAL_KEY] -= shares_to_buy * current_price
         api.submit_order(
             symbol=symbol,
             qty=shares_to_buy,
             side='buy',
-            type='market',
+            type='limit',
             time_in_force='gtc',
-            # limit_price=get_best_ask_price(symbol) * (1 + slippage)
+            limit_price=str(current_price * (1 + slippage))
         )
 
 
@@ -124,13 +126,13 @@ def compute_ema(close_prices, ta_period=14):
     return ewm.values[-1]
 
 
-conn = StreamConn(
+api = tradeapi.REST(
     key_id=PAPER_ALPACA_API_KEY,
     secret_key=PAPER_ALPACA_SECRET_KEY,
     base_url=PAPER_ALPACA_BASE_URL
 )
 
-api = tradeapi.REST(
+stream = StreamConn(
     key_id=PAPER_ALPACA_API_KEY,
     secret_key=PAPER_ALPACA_SECRET_KEY,
     base_url=PAPER_ALPACA_BASE_URL
@@ -225,9 +227,9 @@ async def handle_bar(bar):
         symbol_bar_state[TRADES_KEY].append(trade)
 
         if trade > 0:
-            buy(symbol, trade, capital, last_close_price)
+            buy(symbol, trade, capital)
         if trade < 0:
-            sell(symbol, shares_owned, trade, capital, last_close_price)
+            sell(symbol, shares_owned, trade, capital)
     save_bar_state()
     logging.info(dict(
         type='bar_state_update',
@@ -247,8 +249,8 @@ async def handle_quote(quote):
     quote_state[symbol][BID_KEY][quote.bidexchange] = quote.bidprice
 
 
-@conn.on(r'^trade_updates$')
-async def on_account_updates(conn, channel, account):
+@stream.on(r'trade_updates')
+async def on_trade_updates(conn, channel, account):
     """
     {
         'event': 'fill',
@@ -297,15 +299,33 @@ async def on_account_updates(conn, channel, account):
         if account.order['side'] == 'buy':
             bar_state[account.order['symbol']][SHARES_OWNED_KEY] += filled_quantity
             bar_state[account.order['symbol']][CAPITAL_KEY] -= filled_quantity * filled_avg_price
-            print('bar_state_buy_filled', bar_state)
+            logging.info(dict(
+                type='buy_filled',
+                message=f'Bought {account.order["symbol"]} @ {format_usd(filled_avg_price)}',
+                payload=dict(
+                    symbol=account.order["symbol"],
+                    price=filled_avg_price,
+                    shares_owned=bar_state[account.order['symbol']][SHARES_OWNED_KEY],
+                    capital=bar_state[account.order['symbol']][CAPITAL_KEY]
+                )
+            ))
         if account.order['side'] == 'sell':
             bar_state[account.order['symbol']][SHARES_OWNED_KEY] -= filled_quantity
             bar_state[account.order['symbol']][CAPITAL_KEY] += filled_quantity * filled_avg_price
-            print('bar_state_sell_filled', bar_state)
+            logging.info(dict(
+                type='sell_filled',
+                message=f'Sold {account.order["symbol"]} @ {format_usd(filled_avg_price)}',
+                payload=dict(
+                    symbol=account.order["symbol"],
+                    price=filled_avg_price,
+                    shares_owned=bar_state[account.order['symbol']][SHARES_OWNED_KEY],
+                    capital=bar_state[account.order['symbol']][CAPITAL_KEY]
+                )
+            ))
         return
 
 
-@conn.on(r'^AM.*')
+@stream.on(r'^AM')
 async def on_minute_bars(conn, channel, bar):
     """
     {
@@ -324,22 +344,6 @@ async def on_minute_bars(conn, channel, bar):
     }
     """
     await handle_bar(bar)
-
-
-@conn.on(r'^Q.*')
-async def on_quote(conn, channel, quote):
-    """
-    Quote({'askexchange': 2,
-           'askprice': 119.63,
-           'asksize': 2,
-           'bidexchange': 17,
-           'bidprice': 119.48,
-           'bidsize': 1,
-           'conditions': [0],
-           'symbol': 'AAPL',
-           'timestamp': 1605730275616000000})
-    """
-    await handle_quote(quote)
 
 
 GAP_UP_THRESHOLD = .10
@@ -414,66 +418,6 @@ def update_barstate(barset):
         ))
 
 
-def main():
-    raise ValueError("Don't run it from this branch!")
-    gapped_up_symbols = find_gapped_up_symbols()
-
-    end_time = get_current_datetime()
-    start_time = end_time - timedelta(days=1)  # TODO: Get the previous market open, not yesterday
-    # start_time = end_time - timedelta(minutes=1)
-
-    end_time_str = get_alpaca_time_str_format(end_time)
-    start_time_str = get_alpaca_time_str_format(start_time)
-
-    barset = api.get_barset(
-        symbols=','.join([s[0] for s in gapped_up_symbols]),
-        timeframe='1Min',
-        end=end_time_str,
-        start=start_time_str,
-    )  # TODO: Use Polygon barset api when using Polygon trained model
-
-    update_barstate(barset)
-    save_bar_state()
-
-    market_open_hour = get_current_datetime().replace(
-        hour=8,
-        minute=30
-    )
-    while get_current_datetime() < market_open_hour:
-        now_time = get_current_datetime()
-        # now_time = datetime.datetime.now(pytz.timezone(US_CENTRAL_TIMEZONE)).replace(hour=8, minute=29, second=1)
-
-        end_time = now_time
-        start_time = end_time - timedelta(minutes=1)
-
-        end_time_str = get_alpaca_time_str_format(end_time)
-        start_time_str = get_alpaca_time_str_format(start_time)
-
-        barset = api.get_barset(
-            symbols=','.join([s[0] for s in gapped_up_symbols]),
-            timeframe='1Min',
-            end=end_time_str,
-            start=start_time_str,
-        )  # TODO: Use Polygon barset api when using Polygon trained model
-
-        update_barstate(barset)
-        save_bar_state()
-
-        time.sleep(
-            min((market_open_hour - end_time).seconds, 60)
-        )
-    capital = 100000  # TODO: Figure out how to get current account's capital
-    capital_per_symbol = math.floor(capital / len(gapped_up_symbols))
-    listeners = []
-    for symbol, gap, volume in gapped_up_symbols:
-        assert symbol in bar_state
-    bar_state[symbol][CAPITAL_KEY] = capital_per_symbol
-    listeners.append(f'Q.{symbol}')
-    listeners.append(f'AM.{symbol}')
-    # listeners.append('trade_updates')
-    conn.run(listeners)
-
-
 def get_current_datetime():
     return datetime.datetime.now(pytz.timezone(US_CENTRAL_TIMEZONE))
 
@@ -495,7 +439,7 @@ def find_gapped_up_symbols():
         return cache[cache_date_key]
 
     eight_am = today.replace(hour=8, minute=30, second=0, microsecond=0)
-    yesterday = eight_am - timedelta(days=1)  # TODO: Get the previous market open, not yesterday
+    yesterday = eight_am - timedelta(days=3)  # TODO: Get the previous market open, not yesterday
     eight_am_str = get_alpaca_time_str_format(eight_am)
     yesterday_str = get_alpaca_time_str_format(yesterday)
     gapped_up_symbols = []
@@ -555,6 +499,72 @@ def get_alpaca_time_str_format(
     alpaca_time_str = 'T'.join(the_datetime.strftime(DATETIME_FORMAT).split())
     alpaca_time_str = alpaca_time_str[0:-2] + ':' + alpaca_time_str[-2:]
     return alpaca_time_str
+
+
+def main():
+    gapped_up_symbols = find_gapped_up_symbols()
+
+    gapped_up_symbols = [gapped_up_symbols[2]]
+
+    end_time = get_current_datetime()
+    start_time = end_time - timedelta(days=1)  # TODO: Get the previous market open, not yesterday
+    # start_time = end_time - timedelta(minutes=1)
+
+    end_time_str = get_alpaca_time_str_format(end_time)
+    start_time_str = get_alpaca_time_str_format(start_time)
+
+    barset = api.get_barset(
+        symbols=','.join([s[0] for s in gapped_up_symbols]),
+        timeframe='1Min',
+        end=end_time_str,
+        start=start_time_str,
+    )  # TODO: Use Polygon barset api when using Polygon trained model
+
+    update_barstate(barset)
+    save_bar_state()
+
+    market_open_hour = get_current_datetime().replace(
+        hour=8,
+        minute=30
+    )
+    while get_current_datetime() < market_open_hour:
+        now_time = get_current_datetime()
+        # now_time = datetime.datetime.now(pytz.timezone(US_CENTRAL_TIMEZONE)).replace(hour=8, minute=29, second=1)
+
+        end_time = now_time
+        start_time = end_time - timedelta(minutes=1)
+
+        end_time_str = get_alpaca_time_str_format(end_time)
+        start_time_str = get_alpaca_time_str_format(start_time)
+
+        barset = api.get_barset(
+            symbols=','.join([s[0] for s in gapped_up_symbols]),
+            timeframe='1Min',
+            end=end_time_str,
+            start=start_time_str,
+        )  # TODO: Use Polygon barset api when using Polygon trained model
+
+        update_barstate(barset)
+        save_bar_state()
+
+        time.sleep(
+            min((market_open_hour - end_time).seconds, 60)
+        )
+    capital = 25000  # TODO: Figure out how to get current account's capital
+    capital_per_symbol = math.floor(capital / len(gapped_up_symbols))
+    channels = []
+    for symbol, gap, volume in gapped_up_symbols:
+        assert symbol in bar_state
+        bar_state[symbol][CAPITAL_KEY] = capital_per_symbol
+        channels.append(f'AM.{symbol}')
+    channels.append('trade_updates')
+
+    loop = stream.loop
+    loop.run_until_complete(
+        asyncio.gather(
+            stream.subscribe(channels)
+        )
+    )
 
 
 main()
