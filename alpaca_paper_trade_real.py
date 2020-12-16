@@ -55,21 +55,21 @@ def get_trade_from_model(inputs):
 def sell(symbol, shares_owned, trade, capital, slippage=.005):
     current_price = api.polygon.last_trade(symbol)
     shares_to_sell = math.ceil(abs(trade) * shares_owned)
-    logging.info(dict(
-        type='trade_sell',
-        message=f'Selling {shares_to_sell} of {symbol} @ ~{format_usd(current_price)}',
-        payload=dict(
-            trade=trade,
-            capital=capital,
-            shares_owned=shares_owned,
-            shares_to_sell=shares_to_sell,
-            price=current_price
-        )
-    ))
     if shares_to_sell > 0:
         # TODO: Temporary now that we know on_account_updates is unreliable update the shares owned here
         bar_state[symbol][SHARES_OWNED_KEY] -= shares_to_sell
         bar_state[symbol][CAPITAL_KEY] += shares_to_sell * current_price
+        logging.info(dict(
+            type='trade_sell',
+            message=f'Selling {shares_to_sell} of {symbol} @ ~{format_usd(current_price)}',
+            payload=dict(
+                trade=trade,
+                capital=capital,
+                shares_owned=shares_owned,
+                shares_to_sell=shares_to_sell,
+                price=current_price
+            )
+        ))
         api.submit_order(
             symbol=symbol,
             qty=shares_to_sell,
@@ -84,21 +84,22 @@ def buy(symbol, trade, capital, slippage=.005):
     capital_to_use = capital * trade
     current_price = float(api.polygon.last_trade(symbol).price)
     shares_to_buy = math.floor(capital_to_use / current_price)
-    logging.info(dict(
-        type='trade_buy',
-        message=f'Buying {shares_to_buy} of {symbol} @ ~{format_usd(current_price)}',
-        payload=dict(
-            trade=trade,
-            capital=capital,
-            capital_to_use=capital_to_use,
-            shares_to_buy=shares_to_buy,
-            price=current_price
-        )
-    ))
     if shares_to_buy > 0:
         # TODO: Temporary now that we know on_account_updates is unreliable update the shares owned here
         bar_state[symbol][SHARES_OWNED_KEY] += shares_to_buy
         bar_state[symbol][CAPITAL_KEY] -= shares_to_buy * current_price
+        logging.info(dict(
+            type='trade_buy',
+            message=f'Buying {shares_to_buy} of {symbol} @ ~{format_usd(current_price)}',
+            payload=dict(
+                trade=trade,
+                capital=bar_state[symbol][CAPITAL_KEY],
+                shares_owned=bar_state[symbol][SHARES_OWNED_KEY],
+                capital_to_use=capital_to_use,
+                shares_to_buy=shares_to_buy,
+                price=current_price
+            )
+        ))
         api.submit_order(
             symbol=symbol,
             qty=shares_to_buy,
@@ -230,11 +231,6 @@ async def handle_bar(bar):
             buy(symbol, trade, capital)
         if trade < 0:
             sell(symbol, shares_owned, trade, capital)
-    save_bar_state()
-    logging.info(dict(
-        type='bar_state_update',
-        payload=dict(quote_state=quote_state)
-    ))
 
 
 async def handle_quote(quote):
@@ -504,8 +500,6 @@ def get_alpaca_time_str_format(
 def main():
     gapped_up_symbols = find_gapped_up_symbols()
 
-    gapped_up_symbols = [gapped_up_symbols[2]]
-
     end_time = get_current_datetime()
     start_time = end_time - timedelta(days=1)  # TODO: Get the previous market open, not yesterday
     # start_time = end_time - timedelta(minutes=1)
@@ -559,12 +553,7 @@ def main():
         channels.append(f'AM.{symbol}')
     channels.append('trade_updates')
 
-    loop = stream.loop
-    loop.run_until_complete(
-        asyncio.gather(
-            stream.subscribe(channels)
-        )
-    )
+    stream.run(channels)
 
 
 main()
