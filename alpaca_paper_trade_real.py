@@ -18,9 +18,18 @@ from config import PAPER_ALPACA_API_KEY, PAPER_ALPACA_SECRET_KEY, PAPER_ALPACA_B
 from stock_dataset import PercentChangeNormalizer as PCN
 from utils import DATETIME_FORMAT, get_all_ticker_names, US_CENTRAL_TIMEZONE, DATE_FORMAT, format_usd
 
+
+def get_current_datetime():
+    return datetime.datetime.now(pytz.timezone(US_CENTRAL_TIMEZONE))
+
+
+log_filename = f'alpaca_paper_trade{get_current_datetime().date()}.log'
+with open(log_filename, 'w') as log_file:
+    pass
+
 logging.basicConfig(
     handlers=[
-        logging.FileHandler("alpaca_paper_trade.log"),
+        logging.FileHandler(log_filename),
         logging.StreamHandler()
     ],
     format='%(asctime)s %(levelname)s %(message)s',
@@ -54,6 +63,7 @@ def get_trade_from_model(inputs):
 
 def sell(symbol, shares_owned, trade, capital, slippage=.005):
     current_price = api.polygon.last_trade(symbol)
+    price_with_slippage = current_price * (1 - slippage)
     shares_to_sell = math.ceil(abs(trade) * shares_owned)
     if shares_to_sell > 0:
         # TODO: Temporary now that we know on_account_updates is unreliable update the shares owned here
@@ -67,7 +77,8 @@ def sell(symbol, shares_owned, trade, capital, slippage=.005):
                 capital=capital,
                 shares_owned=shares_owned,
                 shares_to_sell=shares_to_sell,
-                price=current_price
+                price=current_price,
+                price_with_slippage=price_with_slippage
             )
         ))
         api.submit_order(
@@ -76,13 +87,14 @@ def sell(symbol, shares_owned, trade, capital, slippage=.005):
             side=SIDE_SELL,
             type='limit',
             time_in_force=TIME_IN_FORCE_GTC,
-            limit_price=str(current_price * (1 - slippage))
+            limit_price=str(price_with_slippage)
         )
 
 
 def buy(symbol, trade, capital, slippage=.005):
     capital_to_use = capital * trade
     current_price = float(api.polygon.last_trade(symbol).price)
+    price_with_slippage = current_price * (1 + slippage)
     shares_to_buy = math.floor(capital_to_use / current_price)
     if shares_to_buy > 0:
         # TODO: Temporary now that we know on_account_updates is unreliable update the shares owned here
@@ -97,7 +109,8 @@ def buy(symbol, trade, capital, slippage=.005):
                 shares_owned=bar_state[symbol][SHARES_OWNED_KEY],
                 capital_to_use=capital_to_use,
                 shares_to_buy=shares_to_buy,
-                price=current_price
+                price=current_price,
+                price_with_slippage=price_with_slippage
             )
         ))
         api.submit_order(
@@ -106,7 +119,7 @@ def buy(symbol, trade, capital, slippage=.005):
             side='buy',
             type='limit',
             time_in_force='gtc',
-            limit_price=str(current_price * (1 + slippage))
+            limit_price=str(price_with_slippage)
         )
 
 
@@ -412,10 +425,6 @@ def update_barstate(barset):
             message=f'Finished Instantiating {symbol}',
             payload=dict(bar_state=bar_state)
         ))
-
-
-def get_current_datetime():
-    return datetime.datetime.now(pytz.timezone(US_CENTRAL_TIMEZONE))
 
 
 def save_bar_state(bar_state_save_file='./alpaca_paper_trade_real_bar_state.json'):
