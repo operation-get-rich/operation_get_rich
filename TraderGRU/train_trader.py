@@ -47,7 +47,6 @@ def train(
         min_delta=0.00001,  # type: float
         learning_rate=0.0001  # type: float
 ):
-    # type: (...) -> Tuple[TraderGRU, List[Tensor]]
     loss_function = ProfitLoss
     optimizer = torch.optim.RMSprop(trader_gru_model.parameters(), lr=learning_rate)
 
