@@ -11,8 +11,4 @@ __pycache__/
 !gaped_up_stocks_early_volume_1e5_gap_10_statistics.csv
 
 early_day_gap_refactor_0.1_0/
-Train_10AM_Sanity2-20201114-213402/
-Train_Sanity_10AM_NextTrade-20201113-021033/
-Train_Sanity_10AM-20201113-020353/
-Train_Trader_9AM_NextTrade-20201113-011131/
-Train_Trader_9AM_NoNextTrade-20201113-012434/
+runs/
