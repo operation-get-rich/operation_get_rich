@@ -5,8 +5,9 @@ import os
 import alpaca_trade_api as tradeapi
 
 from config import ALPACA_KEY_ID, ALPACA_SECRET_KEY, ALPACA_BASE_URL
-from utils import create_dir, convert_pandas_timestamp_to_formatted_string, retry_download, get_current_directory, \
-    update_state
+from utils import create_dir, get_current_directory, \
+    update_state, DATETIME_FORMAT
+from decorators import retry_download
 
 api = tradeapi.REST(
     key_id=ALPACA_KEY_ID,
@@ -44,7 +45,7 @@ def _download_quotes(symbol, the_date):
 
         for quote in symbol_quotes:
             quotes.append([
-                convert_pandas_timestamp_to_formatted_string(quote.sip_timestamp),
+                quote.sip_timestamp.strftime(DATETIME_FORMAT),
                 quote.bid_price,
                 quote.bid_size,
                 quote.bid_exchange,

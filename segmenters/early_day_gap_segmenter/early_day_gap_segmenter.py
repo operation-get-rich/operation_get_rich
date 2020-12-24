@@ -3,7 +3,8 @@ import os
 import pandas
 
 from segmenters.early_day_gap_segmenter_parallel.early_day_gap_segmenter_parallel import RAW_STOCK_PRICE_DIR, _write_segment_to_csv
-from utils import timeit, create_dir
+from utils import create_dir
+from decorators import timeit
 
 
 @timeit
