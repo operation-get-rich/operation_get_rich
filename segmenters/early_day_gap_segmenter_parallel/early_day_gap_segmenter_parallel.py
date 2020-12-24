@@ -8,7 +8,7 @@ from multiprocessing.pool import Pool
 import pandas
 from pandas import DataFrame
 
-from definitions import PROJECT_ROOT_DIR
+from directories import PROJECT_ROOT_DIR
 from utils import create_dir, DATETIME_FORMAT, create_file
 
 SEGMENTER_NAME = os.path.basename(__file__).split('.')[0]  # remove .py
@@ -79,7 +79,7 @@ def _segment_stock(stock_path, gap_up_threshold, volume_threshold):
         if prev_day_close_price is not None:
             cumulative_volume += volume
 
-        if prev_day_close_price is not None and (time.hour, time.minute) == (9, 30):
+        if prev_day_close_price is not None and (time.hour, time.minute) == (9, 29):
             is_price_gapped_up = (open_price / prev_day_close_price) - 1 > gap_up_threshold
 
             if is_price_gapped_up and cumulative_volume > volume_threshold:
