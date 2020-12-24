@@ -9,7 +9,7 @@ gaped_up_stocks/
 __pycache__/
 *.output
 !gaped_up_stocks_early_volume_1e5_gap_10_statistics.csv
-alpaca_paper_trade_cache.json
+experiment_trader_gru/alpaca_paper_trade_symbol_volume_gap_cache.json
 alpaca_paper_trade_bar.txt
 alpaca_paper_trade_event_state.json
 alpaca_paper_trade_quote.txt
@@ -31,4 +31,4 @@ alpaca_paper_trade.log
 alpaca_paper_trade_12_09_2020.py
 alpaca_paper_trade_real_bar_state.json
 temp_remove_unnamed_column_polygon.py
-alpaca_paper_trade_2020-12-11.log
+experiment_trader_gru/alpaca_paper_trade_logs/alpaca_paper_trade_2020-12-11.log
