@@ -11,7 +11,7 @@ from torch.autograd import Variable
 from torch.utils.data import DataLoader
 
 from experiment_sniper_gru.SniperGRU import SniperGRU
-from experiment_sniper_gru.sniper_dataset import OPEN_COLUMN_INDEX, Normalizer, StockDataset
+from experiment_sniper_gru.dataset import OPEN_COLUMN_INDEX, Normalizer, StockDataset
 
 import multiprocessing
 
