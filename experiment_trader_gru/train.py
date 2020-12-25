@@ -8,6 +8,7 @@ import torch
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
 
+from directories import DATA_DIR
 from experiment_trader_gru.TraderGRU import TraderGRU, ProfitLoss
 from experiment_trader_gru.dataset import TraderGRUDataSet, OPEN_COLUMN_INDEX
 from experiment_trader_gru.normalizer import PercentChangeNormalizer
@@ -251,14 +252,14 @@ if __name__ == "__main__":
         torch.cuda.set_device(args.gpu)
 
     train_data = TraderGRUDataSet(
-        data_folder='./datas/alpaca_gaped_up_stocks_early_volume_1e5_gap_10',
+        data_folder=F'{DATA_DIR}/alpaca_gaped_up_stocks_early_volume_1e5_gap_10',
         split='train',
         should_add_technical_indicator=True
     )
 
     test_data = TraderGRUDataSet(
-        data_folder='./datas/alpaca_gaped_up_stocks_early_volume_1e5_gap_10',
-        split='test',
+        data_folder=f'{DATA_DIR}/alpaca_gaped_up_stocks_early_volume_1e5_gap_10',
+        split='valid',
         should_add_technical_indicator=True
     )
 

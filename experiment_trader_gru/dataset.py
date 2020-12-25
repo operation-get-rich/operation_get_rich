@@ -1,3 +1,5 @@
+import datetime
+
 import numpy as np
 import os
 import random
@@ -25,6 +27,8 @@ HIGH_COLUMN_INDEX = 3
 VOLUME_COLUMN_INDEX = 4
 VWAP_COLUMN_INDEX = 5
 EMA_COLUMN_INDEX = 6
+
+MARKET_OPEN = datetime.time(hour=10, minute=0, second=0)
 
 
 class TraderGRUDataSet(torch.utils.data.Dataset):
@@ -54,7 +58,14 @@ class TraderGRUDataSet(torch.utils.data.Dataset):
     def __getitem__(self, index):
         selected_segment = self.segment_list[index]
         selected_segment_df = pandas.read_csv(filepath_or_buffer=selected_segment)
+
+        # Get time
+        time = pandas.to_datetime(selected_segment_df['time'])
+        is_premarket = pandas.Series([val.time() < MARKET_OPEN for val in time])
+        is_premarket = is_premarket[TECHNICAL_INDICATOR_PERIOD:].to_numpy().astype(float)
+
         selected_segment_df = selected_segment_df.drop(labels=['ticker', 'time'], axis=1)
+
         if self.should_add_technical_indicator:
             selected_segment_df['vwap'] = VolumeWeightedAveragePrice(
                 high=selected_segment_df.high,
@@ -82,13 +93,19 @@ class TraderGRUDataSet(torch.utils.data.Dataset):
                  np.zeros((SEQUENCE_LENGTH - selected_segment_length,
                            selected_segment_np.shape[1]))]
             )
-            return selected_segment_np, selected_segment_length
-        else:
-            max_start = selected_segment_length - SEQUENCE_LENGTH
-            start = random.randint(0, max_start)
-            selected_segment_np = selected_segment_np[start: start + SEQUENCE_LENGTH, :]
 
-            return selected_segment_np, SEQUENCE_LENGTH
+            is_premarket = np.hstack(
+                [is_premarket,
+                 np.zeros((SEQUENCE_LENGTH - selected_segment_length))]
+            )
+
+            return selected_segment_np, selected_segment_length, is_premarket
+
+        else:
+            selected_segment_np = selected_segment_np[0: SEQUENCE_LENGTH, :]
+            is_premarket = is_premarket[0: SEQUENCE_LENGTH]
+
+            return selected_segment_np, SEQUENCE_LENGTH, is_premarket
 
     def __len__(self):
         return len(self.segment_list)
