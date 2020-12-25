@@ -10,6 +10,7 @@ from torch.utils.data import DataLoader
 
 from experiment_vanilla_gru.VanillaGRU import VanillaGRU
 from experiment_vanilla_gru.dataset_vanilla_gru import StockDataset
+from directories import DATA_DIR
 
 import multiprocessing
 
@@ -209,13 +210,13 @@ if __name__ == "__main__":
         torch.cuda.set_device(args.gpu)
 
     train_data = StockDataset(
-        data_folder='./alpaca_gaped_up_stocks_early_volume_1e5_gap_10',
+        data_folder=f'{DATA_DIR}/alpaca_gaped_up_stocks_early_volume_1e5_gap_10',
         split='train',
         should_add_technical_indicator=True
     )
 
     test_data = StockDataset(
-        data_folder='./alpaca_gaped_up_stocks_early_volume_1e5_gap_10',
+        data_folder=f'{DATA_DIR}/alpaca_gaped_up_stocks_early_volume_1e5_gap_10',
         split='valid',
         should_add_technical_indicator=True
     )

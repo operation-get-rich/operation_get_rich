@@ -6,7 +6,7 @@ from torch.autograd import Variable
 
 
 class TraderGRU(nn.Module):
-    def __init__(self, input_size, hidden_size, hard=False):
+    def __init__(self, input_size, hidden_size, hard=False, sparse=True):
         super(TraderGRU, self).__init__()
 
         self.input_size = input_size  # 7 (open, close, low, high, volume, vwap, ema)
@@ -34,6 +34,7 @@ class TraderGRU(nn.Module):
         )
 
         self.hard = hard
+        self.sparse = sparse
 
     def sample_gumbel(self, shape, eps=1e-20):
         U = torch.rand(shape).cuda()
@@ -81,12 +82,14 @@ class TraderGRU(nn.Module):
 
             # Action mask to decide trade or not to trade
             temperature = 0.05
-            action_logit = self.action_layer(hidden_state)  # batch x 1
-            action = self.gumbel_softmax_sample(action_logit, temperature, hard=self.hard)
-
             curr_out = self.output_layer(hidden_state)  # shape: batch x 1
+            curr_out = torch.tanh(curr_out)
 
-            curr_out = torch.tanh(curr_out) * action
+            if self.sparse:
+                action_logit = self.action_layer(hidden_state)  # batch x 1
+                action = self.gumbel_softmax_sample(action_logit, temperature, hard=self.hard)
+                curr_out = curr_out * action
+
             outputs.append(curr_out)
 
         outputs = torch.stack(outputs).squeeze(-1)
@@ -106,11 +109,21 @@ class TraderGRU(nn.Module):
             return hidden_state  # shape: 10, 35
 
 
-def ProfitReward(trade_sequence, market_sequence):
+def ProfitLoss(trade_sequence, market_sequence, is_premarket=None, next_trade=False):
+    if next_trade:
+        trade_sequence = trade_sequence[:-1]
+        market_sequence = market_sequence[1:]
+
+    assert trade_sequence.shape[0] == market_sequence.shape[0]
+
     time_length = trade_sequence.shape[0]
     capital = 1
     shares = 0
     for t in range(time_length):
+        if is_premarket != None:
+            if is_premarket[t]:
+                continue
+
         current_trade = trade_sequence[t]
         current_price = market_sequence[t]
         if current_trade > 0:  # buying
@@ -125,7 +138,8 @@ def ProfitReward(trade_sequence, market_sequence):
     final_price = market_sequence[-1]
     capital = capital + (shares * final_price)
 
-    return capital - 1
+    # Return negative reward
+    return -(capital - 1)
 
 
 def load_trader_gru_model(model_location):

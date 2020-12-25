@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 from datetime import datetime, timedelta
 import pytz
 
@@ -126,3 +127,14 @@ def update_state(state_file_location, update_func=None, *args, **kwargs):
 
     with open(state_file_location, 'w') as state_file:
         json.dump(state, state_file)
+
+def create_exp_dir(path, scripts_to_save=None):
+  if not os.path.exists(path):
+    os.mkdir(path)
+  print('Experiment dir : {}'.format(path))
+
+  if scripts_to_save is not None:
+    os.mkdir(os.path.join(path, 'scripts'))
+    for script in scripts_to_save:
+      dst_file = os.path.join(path, 'scripts', os.path.basename(script))
+      shutil.copyfile(script, dst_file)
