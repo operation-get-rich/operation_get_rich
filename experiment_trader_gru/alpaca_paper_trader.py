@@ -8,7 +8,7 @@ from alpaca_trade_api import StreamConn
 from experiment_trader_gru.directories import RUNS_DIR, ALPACA_PAPER_TRADE_LOGS_DIR
 from experiment_trader_gru.TraderGRU import load_trader_gru_model
 from config import PAPER_ALPACA_API_KEY, PAPER_ALPACA_SECRET_KEY, PAPER_ALPACA_BASE_URL
-from experiment_trader_gru.stock_trader import GappedUpStockFinder, StockTraderManager
+from experiment_trader_gru.stock_trader import GappedUpStockFinder, StockTraderManager, SymbolVolumeGap
 from utils import get_current_datetime, get_today_market_open, get_alpaca_time_str_format, get_previous_market_open
 
 BEST_MODEL_LOCATION = f'{RUNS_DIR}/Trader_Load_NextTrade_PreMarket_Multiply-20201121-222444/best_model.pt'
@@ -85,10 +85,8 @@ def instantiate_stock_traders(model, symbols):
 def main():
     set_up_logging()
 
-    # symbol_volume_gaps = GappedUpStockFinder.find_gapped_up_stock()  # type: SymbolVolumeGap
-    # gapped_up_symbols = [s[0] for s in symbol_volume_gaps]
-
-    gapped_up_symbols = ['TSLA']
+    symbol_volume_gaps = GappedUpStockFinder.find_gapped_up_stock()  # type: SymbolVolumeGap
+    gapped_up_symbols = [s[0] for s in symbol_volume_gaps]
 
     model = load_trader_gru_model(model_location=BEST_MODEL_LOCATION)
 
