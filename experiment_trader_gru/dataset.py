@@ -32,10 +32,6 @@ MARKET_OPEN = datetime.time(hour=10, minute=0, second=0)
 
 
 class TraderGRUDataSet(torch.utils.data.Dataset):
-    """
-    Responsible to return batches of `alpaca_gaped_up_stocks_early_volume_1e5_gap_10` stock data segments.
-    """
-
     def __init__(self, data_folder, split, should_add_technical_indicator=False):
         self.segment_list = []
         company_directories = os.listdir(data_folder)
