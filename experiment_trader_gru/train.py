@@ -1,19 +1,17 @@
 import argparse
 import os
 import time
-from typing import List, Tuple
 
 import numpy as np
-import pandas as pd
 
 import torch
-from torch import Tensor
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
 
-from TraderGRU import TraderGRU
-from stock_dataset import StockDataset, PercentChangeNormalizer, OPEN_COLUMN_INDEX
-from objectives import ProfitLoss
+from directories import DATA_DIR
+from experiment_trader_gru.TraderGRU import TraderGRU, ProfitLoss
+from experiment_trader_gru.dataset import TraderGRUDataSet, OPEN_COLUMN_INDEX
+from experiment_trader_gru.normalizer import PercentChangeNormalizer
 
 import multiprocessing
 
@@ -178,11 +176,11 @@ def _train(train_loader, trader_gru_model, loss_function, optimizer, batch_size)
         optimizer.zero_grad()
         loss_train.backward()
         optimizer.step()
-        
         if args.multiply:
             loss_train = -(torch.exp(-loss_train) - 1)
         losses_epoch_train.append(loss_train)
     return losses_epoch_train
+
 
 def compute_loss(
         loss_function,
@@ -198,13 +196,11 @@ def compute_loss(
         # BUG: Sometimes osl is 0
         if osl <= 1:
             continue
-
         current_outputs = trades[batch_index, 0: osl].float()
         current_prices = open_prices[batch_index, 0: osl].float()
         current_is_premarket = is_premarket[batch_index, 0: osl].float()
-
         # TODO: What if at some day we lose 100% of our capital??
-        current_loss =  loss_function(
+        current_loss = loss_function(
             current_outputs,
             current_prices,
             current_is_premarket,
@@ -212,12 +208,11 @@ def compute_loss(
         )
         losses.append(current_loss)
         num_sequences += 1
-
     if multiply:
         eps = 1e-15
-        logsum = 0 
+        logsum = 0
         for loss in losses:
-            change = -loss + 1 # change is in range [0, inf]
+            change = -loss + 1  # change is in range [0, inf]
             log_change = torch.log(change + eps)
             logsum += log_change
         total_loss = -logsum
@@ -226,7 +221,6 @@ def compute_loss(
         for loss in losses:
             total_loss += loss
         total_loss /= float(num_sequences)
-
     return total_loss
 
 
@@ -253,17 +247,18 @@ def get_trades_from_model(
 
 if __name__ == "__main__":
     print(args)
+
     if torch.cuda.is_available():
         torch.cuda.set_device(args.gpu)
 
-    train_data = StockDataset(
-        data_folder='./gaped_up_stocks_early_volume_1e5_gap_10',
+    train_data = TraderGRUDataSet(
+        data_folder=F'{DATA_DIR}/alpaca_gaped_up_stocks_early_volume_1e5_gap_10',
         split='train',
         should_add_technical_indicator=True
     )
 
-    test_data = StockDataset(
-        data_folder='./gaped_up_stocks_early_volume_1e5_gap_10',
+    test_data = TraderGRUDataSet(
+        data_folder=f'{DATA_DIR}/alpaca_gaped_up_stocks_early_volume_1e5_gap_10',
         split='valid',
         should_add_technical_indicator=True
     )
@@ -272,6 +267,7 @@ if __name__ == "__main__":
     test_loader = DataLoader(test_data, num_workers=1, shuffle=True, batch_size=BATCH_SIZE)
 
     inputs, original_sequence_lengths, is_premarket = next(iter(train_loader))
+
     inputs  # shape: 10, 390, 7
     [batch_size, seq_length, num_features] = inputs.size()
 
@@ -284,9 +280,9 @@ if __name__ == "__main__":
     # Create directories
     if args.load:
         model_path = os.path.join('runs', args.load, 'best_model.pt')
-        model.load_state_dict(torch.load(model_path, 
-            map_location=lambda storage, loc: storage))
-    
+        model.load_state_dict(torch.load(model_path,
+                                         map_location=lambda storage, loc: storage))
+
     args.save = '{}-{}'.format(args.save, time.strftime("%Y%m%d-%H%M%S"))
     args.save = os.path.join('runs', args.save)
     create_dir(args.save)

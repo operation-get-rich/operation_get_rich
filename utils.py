@@ -1,7 +1,26 @@
+import json
 import os
 import shutil
-import time
-from datetime import datetime
+from datetime import datetime, timedelta
+import pytz
+
+import alpaca_trade_api as tradeapi
+
+from config import PAPER_ALPACA_API_KEY, PAPER_ALPACA_SECRET_KEY, PAPER_ALPACA_BASE_URL
+
+api = tradeapi.REST(
+    key_id=PAPER_ALPACA_API_KEY,
+    secret_key=PAPER_ALPACA_SECRET_KEY,
+    base_url=PAPER_ALPACA_BASE_URL
+)
+
+DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S%z'
+DATE_FORMAT = '%Y-%m-%d'
+US_CENTRAL_TIMEZONE = 'US/Central'
+
+"""
+Ticker related utils
+"""
 
 
 def get_all_ticker_names():
@@ -19,48 +38,95 @@ def _get_ticker_names(file_name):
     return ticker_names
 
 
+""""""
+
+"""
+Directory related utils
+"""
+
+
+def create_file(path):
+    if not os.path.exists(path):
+        with open(path, 'w'):
+            os.utime(path, None)
+        return True
+    return False
+
+
 def create_dir(path):
     if not os.path.exists(path):
         os.mkdir(path)
     return path
 
 
-def get_date(time_str):
-    # type: (AnyStr) -> datetime
-    datetime_obj = datetime.strptime(''.join(time_str.rsplit(':', 1)), '%Y-%m-%d %H:%M:%S%z')
-    return datetime(year=datetime_obj.year,
-                    month=datetime_obj.month,
-                    day=datetime_obj.day,
-                    tzinfo=datetime_obj.tzinfo
-                    )
+def get_current_directory(dunder_file):
+    return os.path.dirname(os.path.realpath(dunder_file))
 
 
-def get_date_time(time_str):
-    # type: (AnyStr) -> datetime
-    return datetime.strptime(''.join(time_str.rsplit(':', 1)), '%Y-%m-%d %H:%M:%S%z')
+""""""
+
+"""
+Time related utils
+"""
 
 
-def get_date_string(time):
-    # type: (datetime) -> AnyStr
-    return ' '.join(time.isoformat().split('T'))
+def get_current_datetime():
+    return datetime.now(pytz.timezone(US_CENTRAL_TIMEZONE))
 
 
-def timeit(method):
-    def timed(*args, **kw):
-        ts = time.time()
-        result = method(*args, **kw)
-        te = time.time()
-        if 'log_time' in kw:
-            name = kw.get('log_name', method.__name__.upper())
-            kw['log_time'][name] = int((te - ts) * 1000)
-        else:
-            print(
-                '%r  %2.2f ms' % \
-                (method.__name__, (te - ts) * 1000)
-            )
-        return result
+def get_today_market_open():
+    return get_current_datetime().replace(hour=8, minute=30)
 
-    return timed
+
+def get_alpaca_time_str_format(
+        the_datetime  # type: datetime
+):
+    alpaca_time_str = 'T'.join(the_datetime.strftime(DATETIME_FORMAT).split())
+    alpaca_time_str = alpaca_time_str[0:-2] + ':' + alpaca_time_str[-2:]
+    return alpaca_time_str
+
+
+def get_previous_market_open(anchor_time=None):
+    if not anchor_time:
+        anchor_time = get_current_datetime()
+
+    previous_market_open = anchor_time - timedelta(days=1)
+    previous_market_open_date_str = previous_market_open.date().strftime(DATE_FORMAT)
+
+    while not api.get_calendar(start=previous_market_open_date_str,
+                               end=previous_market_open_date_str)[0].open:
+        previous_market_open = previous_market_open - timedelta(days=1)
+        previous_market_open_date_str = previous_market_open.date().strftime(DATE_FORMAT)
+
+    return previous_market_open
+
+
+""""""
+
+
+def format_usd(capital):
+    capital_formatted = '${:,.2f}'.format(capital)
+    return capital_formatted
+
+
+def update_state(state_file_location, update_func=None, *args, **kwargs):
+    created = create_file(state_file_location)
+    if created:
+        state = {}
+    else:
+        with open(state_file_location, 'r') as state_file:
+            state = json.load(state_file)
+
+    if update_func:
+        update_func(state, *args, **kwargs)
+
+    if '_meta' in state:
+        if 'first_state_update_call' not in state['_meta']:
+            state['_meta']['first_state_update_call'] = datetime.now().strftime(DATETIME_FORMAT)
+        state['_meta']['latest_state_update_call'] = datetime.now().strftime(DATETIME_FORMAT)
+
+    with open(state_file_location, 'w') as state_file:
+        json.dump(state, state_file)
 
 def create_exp_dir(path, scripts_to_save=None):
   if not os.path.exists(path):
