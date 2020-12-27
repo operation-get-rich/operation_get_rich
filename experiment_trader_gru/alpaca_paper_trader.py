@@ -3,9 +3,11 @@ import time
 from datetime import timedelta
 
 import alpaca_trade_api as tradeapi
+import pandas
 from alpaca_trade_api import StreamConn
+from freezegun import freeze_time
 
-from experiment_trader_gru.directories import RUNS_DIR, ALPACA_PAPER_TRADE_LOGS_DIR
+from experiment_trader_gru.experiment_trader_gru_directories import RUNS_DIR, ALPACA_PAPER_TRADE_LOGS_DIR
 from experiment_trader_gru.TraderGRU import load_trader_gru_model
 from config import PAPER_ALPACA_API_KEY, PAPER_ALPACA_SECRET_KEY, PAPER_ALPACA_BASE_URL
 from experiment_trader_gru.stock_trader import GappedUpStockFinder, StockTraderManager, SymbolVolumeGap
@@ -64,7 +66,8 @@ def warm_up_stock_traders(stock_traders_by_symbol):
 
 def instantiate_stock_traders(model, symbols):
     end_time = get_current_datetime()
-    start_time = get_previous_market_open(anchor_time=end_time)
+    start_time = end_time.replace(hour=0, minute=0)
+
     end_time_str = get_alpaca_time_str_format(end_time)
     start_time_str = get_alpaca_time_str_format(start_time)
     barset = api.get_barset(
@@ -79,6 +82,7 @@ def instantiate_stock_traders(model, symbols):
         barset=barset,
         capital=100_000  # TODO: Figure out how to get capital from our account
     )
+
     return stock_traders_by_symbol
 
 
