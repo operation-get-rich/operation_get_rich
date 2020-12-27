@@ -82,12 +82,12 @@ def _parse_minute_bars_call(current_row_index, line, lines, bars_data_from_logs)
     return i
 
 
-def _confirm_correctness_of_raw_data(bars_data_from_logs, stock_df):
+def _confirm_correctness_of_raw_data(bars_data_from_logs, stock_df, hour_minute_tuple):
     for i, row in stock_df.iterrows():
-        if row.time.hour < 11:
+        if row.time.hour < hour_minute_tuple[0]:
             continue
 
-        if row.time.hour == 11 and row.time.minute < 27:
+        if row.time.hour == hour_minute_tuple[0] and row.time.minute < hour_minute_tuple[1]:
             continue
         a_minute_after = row.time + datetime.timedelta(minutes=1)
         assert bars_data_from_logs[a_minute_after.strftime(DATETIME_FORMAT)[0:-5]]['open'] == row.open
@@ -186,7 +186,7 @@ def main():
         #####
 
     stock_df = pd.read_csv(stock_file, parse_dates=['time'])
-    _confirm_correctness_of_raw_data(bars_data_from_logs, stock_df)
+    _confirm_correctness_of_raw_data(bars_data_from_logs, stock_df, (11, 27))
 
     # timestamp = list(stock_trader_state_from_logs.items())[0][1]['raw_features'][0]['time']
     # datetime.datetime.utcfromtimestamp(list(stock_trader_state_from_logs.items())[0][1]['raw_features'][0]['time'])
