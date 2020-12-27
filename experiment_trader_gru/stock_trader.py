@@ -430,6 +430,7 @@ class StockTrader:
         else:
             logging.info(
                 dict(
+                    type='no_trade_buy',
                     msg=f'Buying 0 shares of {self.symbol}',
                     trade=trade,
                     capital=self._state.capital,
