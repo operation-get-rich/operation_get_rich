@@ -11,7 +11,7 @@ from numpy import mean
 from ta.volume import VolumeWeightedAveragePrice
 
 from directories import DATA_DIR
-from experiment_trader_gru.directories import RUNS_DIR
+from experiment_trader_gru.experiment_trader_gru_directories import RUNS_DIR
 from experiment_trader_gru.stock_trader import StockTrader
 from experiment_trader_gru.TraderGRU import load_trader_gru_model
 
