@@ -58,7 +58,7 @@ class TradeFake:
 @pytest.mark.asyncio
 async def test_stock_trader_handle_bar_update_states_correctly_when_buying_or_selling(mocker):
     mocker.patch(
-        'experiment_trader_gru.entities.api'
+        'experiment_trader_gru.stock_trader.api'
     )
 
     model = load_trader_gru_model(
@@ -85,7 +85,7 @@ async def test_stock_trader_handle_bar_update_states_correctly_when_buying_or_se
     total_volume = 0
     for _, bar in cbat_df.iterrows():
         mocker.patch(
-            'experiment_trader_gru.entities.api.polygon.last_trade',
+            'experiment_trader_gru.stock_trader.api.polygon.last_trade',
             return_value=TradeFake(price=bar.open)
         )
         total_volume += cbat_df.volume
