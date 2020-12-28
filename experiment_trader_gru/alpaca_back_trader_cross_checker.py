@@ -99,14 +99,20 @@ def _confirm_correctness_of_raw_data(bars_data_from_logs, stock_df, hour_minute_
 
 @timeit
 def main():
-    capital = 25000
-    stock_file = f'{DATA_DIR}/alpaca_cross_check/TSLA_2020-12-24.csv'
-    trading_state, unnormalized_model_inputs = day_trade(stock_file, capital, start_hour_minute_tuple=(11, 28))
+    stock_file = f'{DATA_DIR}/alpaca_cross_check/TSLA_2020-12-28.csv'
+    log_file = 'alpaca_paper_trade_logs/alpaca_paper_trade2020-12-28.log'
+    start_hour_minute_tuple = (13, 42)
+
+    trading_state, unnormalized_model_inputs = day_trade(
+        stock_file,
+        capital=100_000,
+        start_hour_minute_tuple=start_hour_minute_tuple
+    )
 
     trading_state_from_logs = {}
     bars_data_from_logs = {}
     stock_trader_state_from_logs = {}
-    with open('alpaca_paper_trade_logs/alpaca_paper_trade2020-12-24.log') as f:
+    with open(log_file) as f:
         lines = f.readlines()
         current_row_index = 0
 
@@ -186,10 +192,12 @@ def main():
         #####
 
     stock_df = pd.read_csv(stock_file, parse_dates=['time'])
-    _confirm_correctness_of_raw_data(bars_data_from_logs, stock_df, (11, 27))
+    _confirm_correctness_of_raw_data(
+        bars_data_from_logs,
+        stock_df,
+        start_hour_minute_tuple
+    )
 
-    # timestamp = list(stock_trader_state_from_logs.items())[0][1]['raw_features'][0]['time']
-    # datetime.datetime.utcfromtimestamp(list(stock_trader_state_from_logs.items())[0][1]['raw_features'][0]['time'])
     return capital
 
 
