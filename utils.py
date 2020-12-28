@@ -17,6 +17,7 @@ api = tradeapi.REST(
 DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S%z'
 DATE_FORMAT = '%Y-%m-%d'
 US_CENTRAL_TIMEZONE = 'US/Central'
+US_EAST_TIMEZONE = 'US/Eastern'
 
 """
 Ticker related utils
@@ -70,8 +71,8 @@ Time related utils
 """
 
 
-def get_current_datetime():
-    return datetime.now(pytz.timezone(US_CENTRAL_TIMEZONE))
+def get_current_datetime(timezone=US_CENTRAL_TIMEZONE):
+    return datetime.now(pytz.timezone(timezone))
 
 
 def get_today_market_open():

@@ -11,7 +11,7 @@ import alpaca_trade_api as tradeapi
 from config import PAPER_ALPACA_API_KEY, PAPER_ALPACA_SECRET_KEY, PAPER_ALPACA_BASE_URL
 from experiment_trader_gru.normalizer import PercentChangeNormalizer as PCN
 from utils import get_current_datetime, DATE_FORMAT, get_previous_market_open, get_alpaca_time_str_format, \
-    get_all_ticker_names, format_usd
+    get_all_ticker_names, format_usd, DATETIME_FORMAT
 
 api = tradeapi.REST(
     key_id=PAPER_ALPACA_API_KEY,
@@ -190,7 +190,7 @@ class StockState:
         for bar in bars:
             self.raw_features.append(
                 RawFeature(
-                    time=bar.t.timestamp(),
+                    time=bar.t.strftime(DATETIME_FORMAT),
                     open=bar.o,
                     close=bar.c,
                     low=bar.l,
@@ -430,6 +430,7 @@ class StockTrader:
         else:
             logging.info(
                 dict(
+                    type='no_trade_buy',
                     msg=f'Buying 0 shares of {self.symbol}',
                     trade=trade,
                     capital=self._state.capital,

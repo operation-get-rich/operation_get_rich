@@ -3,9 +3,10 @@ import numpy as np
 import pandas as pd
 
 from config import ALPACA_KEY_ID, ALPACA_SECRET_KEY, ALPACA_BASE_URL
-from utils import get_all_ticker_names, create_dir
+from directories import DATA_DIR
+from utils import create_dir
 
-SAVE_PATH_DIR = '../datas/alpaca_cross_check'
+SAVE_PATH_DIR = f'{DATA_DIR}/alpaca_cross_check'
 COMPANY_STEPS = 100
 
 create_dir(SAVE_PATH_DIR)
@@ -18,11 +19,12 @@ api = tradeapi.REST(
 
 print("Starting Download:", flush=True)
 
-the_date = '2020-12-17'
-start_datetime = f'{the_date}T03:00:00-05:00'
+the_date = '2020-12-24'
+start_datetime = f'{the_date}T00:00:00-05:00'
 end_datetime = f'{the_date}T15:00:00-05:00'
 
-tickers = ['TKAT']
+
+tickers = ['TSLA']
 for ticker in tickers:
     print("Downloading Tickers: ", ticker, flush=True)
 
