@@ -1,8 +1,12 @@
 import numpy as np
 import torch
 
-from experiment_sniper_gru.dataset import VOLUME_COLUMN_INDEX, VOLUME_MEAN, VOLUME_STD, OPEN_COLUMN_INDEX, \
+from experiment_sniper_gru.dataset import VOLUME_COLUMN_INDEX, OPEN_COLUMN_INDEX, \
     CLOSE_COLUMN_INDEX, LOW_COLUMN_INDEX, HIGH_COLUMN_INDEX, VWAP_COLUMN_INDEX, EMA_COLUMN_INDEX
+
+# From gaped_up_stocks_early_volume_1e5_gap_10_statistics.csv
+VOLUME_MEAN = 5236.079151848999
+VOLUME_STD = 17451.76183378195
 
 
 class PercentChangeNormalizer:
