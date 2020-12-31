@@ -46,20 +46,11 @@ def train(
         min_delta=0.00001,  # type: float
         learning_rate=0.0001  # type: float
 ):
-    # type: (...) -> Tuple[SniperGRU, List[Tensor]]
-
     loss_function = torch.nn.BCELoss().to(device)
-
     optimizer = torch.optim.RMSprop(trader_gru_model.parameters(), lr=learning_rate)
 
     print('Model Structure: ', trader_gru_model)
     print('Start Training ... ')
-
-    average_epoch_losses_train = []
-    average_epoch_losses_valid = []
-
-    average_epoch_accuracies_train = []
-    average_epoch_accuracies_valid = []
 
     cur_time = time.time()
     pre_time = time.time()
@@ -88,26 +79,20 @@ def train(
 
         avg_losses_epoch_train = sum(losses_epoch_train).cpu().detach().numpy() / float(len(losses_epoch_train))
         avg_losses_epoch_valid = sum(losses_epoch_valid).cpu().detach().numpy() / float(len(losses_epoch_valid))
-        average_epoch_losses_train.append(avg_losses_epoch_train)
-        average_epoch_losses_valid.append(avg_losses_epoch_valid)
 
         avg_accuracies_epoch_train = (sum(accuracies_epoch_train).cpu().detach().numpy()
                                       / float(len(losses_epoch_train)))
         avg_accuracies_epoch_valid = (sum(accuracies_epoch_valid).cpu().detach().numpy()
                                       / float(len(losses_epoch_valid)))
-        average_epoch_accuracies_train.append(avg_accuracies_epoch_train)
-        average_epoch_accuracies_valid.append(avg_accuracies_epoch_valid)
 
         # Early Stopping
         if epoch == 0:
             is_best_model = 1
-            best_model = trader_gru_model
             if avg_losses_epoch_valid < min_loss_epoch_valid:
                 min_loss_epoch_valid = avg_losses_epoch_valid
         else:
             if min_loss_epoch_valid - avg_losses_epoch_valid > min_delta:
                 is_best_model = 1
-                best_model = trader_gru_model
                 min_loss_epoch_valid = avg_losses_epoch_valid
                 patient_epoch = 0
 
@@ -133,16 +118,14 @@ def train(
         )
         pre_time = cur_time
 
-    return best_model, [average_epoch_losses_train, average_epoch_losses_valid]
-
 
 def _train(train_loader, trader_gru_model, optimizer, loss_function, batch_size):
     losses_epoch_train = []
     accuracies_epoch_train = []
     for features, labels, original_sequence_lengths in train_loader:
-        features  # shape: batch_size x sequence_length x feature_length
-        labels  # shape: batch_size
-        original_sequence_lengths  # shape: batch_size
+        features = features.float().to(device)  # shape: batch_size x sequence_length x feature_length
+        labels = labels.float().to(device)  # shape: batch_size
+        original_sequence_lengths = original_sequence_lengths.to(device)  # shape: batch_size
 
         if features.shape[0] != batch_size:
             continue
@@ -153,8 +136,7 @@ def _train(train_loader, trader_gru_model, optimizer, loss_function, batch_size)
             original_sequence_lengths=original_sequence_lengths
         )  # shape: batch_size x 1
 
-        # TODO: Calling float here is kind of hacky. Fix this
-        loss = loss_function(outputs, labels.float())
+        loss = loss_function(outputs, labels)
         accuracy = _binary_accuracy(outputs, labels)
 
         losses_epoch_train.append(loss)
@@ -194,19 +176,13 @@ def get_model_output(
         model,  # type: SniperGRU
         original_sequence_lengths,
 ):
-    use_gpu = torch.cuda.is_available()
-    features = features.float()
-
     # TODO: Should we change the way we normalize volume?
     #  Find technique of normalization that keeps updating whenever new data comes in
     normalized_features = PercentChangeNormalizer.normalize_volume(
         features)  # size: batch_size x sequence_length x feature_length
     normalized_features = PercentChangeNormalizer.normalize_price_into_percent_change(normalized_features)
 
-    if use_gpu:
-        normalized_features = Variable(normalized_features.cuda())
-    else:
-        normalized_features = Variable(normalized_features)
+    normalized_features = Variable(normalized_features).to(device)
 
     outputs = model(normalized_features, original_sequence_lengths)  # batch_size x 1
 
@@ -226,13 +202,10 @@ if __name__ == "__main__":
     # Hyper-parameters
     num_classes = 1
     num_epochs = 30000
-    # batch_size = 100
-    # learning_rate = 0.001
-    #
-    # input_size = 28
-    # sequence_length = 28
-    # hidden_size = 128
+    batch_size = 10
+    learning_rate = 0.0001
     num_layers = 2
+    hidden_size_multipier = 5
 
     # Create directories
     args.save = '{}-{}'.format(args.save, time.strftime("%Y%m%d-%H%M%S"))
@@ -255,21 +228,22 @@ if __name__ == "__main__":
     test_loader = DataLoader(test_data, num_workers=1, shuffle=True, batch_size=BATCH_SIZE)
 
     inputs, label, original_sequence_lengths = next(iter(train_loader))
-    inputs  # shape: batch_size, seq_length, feature_length
+    # inputs: batch_size, seq_length, feature_length
+
     [batch_size, seq_length, num_features] = inputs.size()
 
     model = SniperGRU(
         input_size=num_features,
-        hidden_size=5 * num_features,
+        hidden_size=hidden_size_multipier * num_features,
         num_layers=num_layers,
         num_classes=num_classes
-    )
-    if torch.cuda.is_available():
-        model = model.cuda()
+    ).to(device)
 
-    best_grud, losses_grud = train(
+    train(
         model,
         train_loader,
         test_loader,
-        num_epochs=num_epochs
+        num_epochs=num_epochs,
+        batch_size=batch_size,
+        learning_rate=learning_rate,
     )
