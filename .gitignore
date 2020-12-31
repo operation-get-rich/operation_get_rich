@@ -38,3 +38,4 @@ experiment_trader_gru/alpaca_paper_trade_logs/alpaca_paper_trade_2020-12-11.log
 datas/
 /experiment_trader_gru/alpaca_paper_trade_logs/
 /segmenters/early_day_gap_segmenter_parallel/early_day_gap_segmenter_parallel_console_output.txt
+pytorch-examples/
