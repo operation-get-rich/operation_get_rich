@@ -10,8 +10,10 @@ from torch import Tensor
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
 
+from directories import DATA_DIR
 from experiment_sniper_gru.SniperGRU import SniperGRU
-from experiment_sniper_gru.dataset import OPEN_COLUMN_INDEX, Normalizer, StockDataset
+from experiment_sniper_gru.dataset import OPEN_COLUMN_INDEX, SniperDataset
+from experiment_sniper_gru.normalizer import PercentChangeNormalizer
 
 import multiprocessing
 
@@ -30,6 +32,9 @@ args = parser.parse_args()
 
 BATCH_SIZE = 10
 
+# check whether cuda is available
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
 
 def train(
         trader_gru_model,  # type: SniperGRU
@@ -43,7 +48,7 @@ def train(
 ):
     # type: (...) -> Tuple[SniperGRU, List[Tensor]]
 
-    loss_function = torch.nn.MSELoss(reduction='sum')
+    loss_function = torch.nn.BCELoss().to(device)
 
     optimizer = torch.optim.RMSprop(trader_gru_model.parameters(), lr=learning_rate)
 
@@ -53,6 +58,9 @@ def train(
     average_epoch_losses_train = []
     average_epoch_losses_valid = []
 
+    average_epoch_accuracies_train = []
+    average_epoch_accuracies_valid = []
+
     cur_time = time.time()
     pre_time = time.time()
 
@@ -61,15 +69,15 @@ def train(
     patient_epoch = 0
     min_loss_epoch_valid = 10000.0
     for epoch in range(num_epochs):
-        losses_epoch_train = _train(
+        losses_epoch_train, accuracies_epoch_train = _train(
             train_loader,
             trader_gru_model,
-            loss_function,
             optimizer,
+            loss_function,
             batch_size
         )
 
-        losses_epoch_valid = _validate(
+        losses_epoch_valid, accuracies_epoch_valid = _validate(
             valid_loader,
             trader_gru_model,
             loss_function,
@@ -82,6 +90,13 @@ def train(
         avg_losses_epoch_valid = sum(losses_epoch_valid).cpu().detach().numpy() / float(len(losses_epoch_valid))
         average_epoch_losses_train.append(avg_losses_epoch_train)
         average_epoch_losses_valid.append(avg_losses_epoch_valid)
+
+        avg_accuracies_epoch_train = (sum(accuracies_epoch_train).cpu().detach().numpy()
+                                      / float(len(losses_epoch_train)))
+        avg_accuracies_epoch_valid = (sum(accuracies_epoch_valid).cpu().detach().numpy()
+                                      / float(len(losses_epoch_valid)))
+        average_epoch_accuracies_train.append(avg_accuracies_epoch_train)
+        average_epoch_accuracies_valid.append(avg_accuracies_epoch_valid)
 
         # Early Stopping
         if epoch == 0:
@@ -107,10 +122,12 @@ def train(
         # Print training parameters
         cur_time = time.time()
         print(
-            'Epoch: {}, train_loss: {}, valid_loss: {}, time: {}, best model: {}'.format(
+            'Epoch: {}, train_loss: {}, valid_loss: {}, train_acc: {}, valid_acc: {}, time: {}, best model: {}'.format(
                 epoch,
                 np.around(avg_losses_epoch_train, decimals=8),
                 np.around(avg_losses_epoch_valid, decimals=8),
+                np.around(avg_accuracies_epoch_train, decimals=8),
+                np.around(avg_accuracies_epoch_valid, decimals=8),
                 np.around([cur_time - pre_time], decimals=2),
                 is_best_model)
         )
@@ -119,127 +136,104 @@ def train(
     return best_model, [average_epoch_losses_train, average_epoch_losses_valid]
 
 
-def _train(train_loader, trader_gru_model, loss_function, optimizer, batch_size):
+def _train(train_loader, trader_gru_model, optimizer, loss_function, batch_size):
     losses_epoch_train = []
-    for features, original_sequence_lengths in train_loader:
+    accuracies_epoch_train = []
+    for features, labels, original_sequence_lengths in train_loader:
         features  # shape: batch_size x sequence_length x feature_length
+        labels  # shape: batch_size
         original_sequence_lengths  # shape: batch_size
 
         if features.shape[0] != batch_size:
             continue
 
-        pandas.DataFrame(features[0].numpy())
-
-        model_outputs = get_model_output(
+        outputs = get_model_output(
             features=features,
-            model=trader_gru_model
-        )  # shape: batch_size x sequence_length
+            model=trader_gru_model,
+            original_sequence_lengths=original_sequence_lengths
+        )  # shape: batch_size x 1
 
-        targets = get_targets(
-            features=features
-        )  # shape: batch_size x sequence_length
-
-        loss = compute_loss(
-            model_outputs,
-            targets,
-            original_sequence_lengths,
-            loss_function
-        )
+        # TODO: Calling float here is kind of hacky. Fix this
+        loss = loss_function(outputs, labels.float())
+        accuracy = _binary_accuracy(outputs, labels)
 
         losses_epoch_train.append(loss)
+        accuracies_epoch_train.append(accuracy)
 
         trader_gru_model.zero_grad()
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-    return losses_epoch_train
+    return losses_epoch_train, accuracies_epoch_train
 
 
 def _validate(valid_loader, trader_gru_model, loss_function, batch_size):
     losses_epoch_valid = []
-    for features, original_sequence_lengths_val in valid_loader:
+    accuracies_epoch_valid = []
+    for features, labels, original_sequence_lengths_val in valid_loader:
         if features.shape[0] != batch_size:
             continue
 
-        model_outputs = get_model_output(
+        outputs = get_model_output(
             features=features,
-            model=trader_gru_model
+            model=trader_gru_model,
+            original_sequence_lengths=original_sequence_lengths
         )
 
-        targets = get_targets(
-            features=features
-        )  # shape: batch_size x sequence_length
-
-        loss = compute_loss(
-            model_outputs=model_outputs,
-            target=targets
-        )
+        loss = loss_function(outputs, labels)
+        accuracy = _binary_accuracy(outputs, labels)
 
         losses_epoch_valid.append(loss)
+        accuracies_epoch_valid.append(accuracy)
 
-    return losses_epoch_valid
+    return losses_epoch_valid, accuracies_epoch_valid
 
 
 def get_model_output(
         features,  # size: batch_size x sequence_length x feature_length
-        model  # type: SniperGRU
+        model,  # type: SniperGRU
+        original_sequence_lengths,
 ):
     use_gpu = torch.cuda.is_available()
     features = features.float()
 
     # TODO: Should we change the way we normalize volume?
     #  Find technique of normalization that keeps updating whenever new data comes in
-    normalized_features = Normalizer.normalize_volume(
+    normalized_features = PercentChangeNormalizer.normalize_volume(
         features)  # size: batch_size x sequence_length x feature_length
-    normalized_features = Normalizer.normalize_price_into_percent_change(normalized_features)
+    normalized_features = PercentChangeNormalizer.normalize_price_into_percent_change(normalized_features)
 
     if use_gpu:
         normalized_features = Variable(normalized_features.cuda())
     else:
         normalized_features = Variable(normalized_features)
 
-    outputs = model(normalized_features)  # batch_size x sequence_length
+    outputs = model(normalized_features, original_sequence_lengths)  # batch_size x 1
 
     return outputs
 
 
-def get_targets(
-        features,  # shape: batch x sequence_length x feature_length
-        profit_target=.02
-):
-    pandas.DataFrame(features[0].numpy())
-    sequence_length = features.shape[1]
-    targets = []
-    for i in range(sequence_length - 1):
-        close_prices = features[:, i + 1, CLOSE_COLUMN_INDEX]
-        open_prices = features[:, i + 1, OPEN_COLUMN_INDEX]
-        flags = torch.from_numpy(np.array(
-            [float(close >= open * (1 + profit_target)) for close, open in zip(close_prices, open_prices)]
-        ))  # shape: batch_size
-        targets.append(flags)
-    targets = torch.stack(targets).squeeze(-1)  # shape: sequence_length x batch_size
-    targets = torch.transpose(targets, 0, 1)  # shape: batch_size x sequence_length
-    return targets
+def _binary_accuracy(outputs, y):
+    # round predictions to the closest integer
+    rounded_preds = torch.where(outputs > 0.8, 1, 0)  # if output > 0.8 outputs 1 else 0
 
-
-def compute_loss(
-        model_outputs,  # shape: batch_size x sequence_length
-        targets,  # shape: batch_size x sequence_length
-        original_sequence_lengths,  # shape: batch_size
-        loss_function
-):
-    batch_size = len(original_sequence_lengths)
-    loss = 0
-    for batch_index, original_sequence_lengths in enumerate(original_sequence_lengths):
-        output = model_outputs[batch_index, :]
-        target = model_outputs[batch_index, :]
-
-        loss += loss_function(output, target)
-    loss /= batch_size
-    return loss
+    correct = (rounded_preds == y).float()
+    acc = correct.sum() / len(correct)
+    return acc
 
 
 if __name__ == "__main__":
+    # Hyper-parameters
+    num_classes = 1
+    num_epochs = 30000
+    # batch_size = 100
+    # learning_rate = 0.001
+    #
+    # input_size = 28
+    # sequence_length = 28
+    # hidden_size = 128
+    num_layers = 2
+
     # Create directories
     args.save = '{}-{}'.format(args.save, time.strftime("%Y%m%d-%H%M%S"))
     create_dir(args.save)
@@ -247,33 +241,35 @@ if __name__ == "__main__":
     if torch.cuda.is_available():
         torch.cuda.set_device(args.gpu)
 
-    root_data_dir = '../datas/polygon_early_day_gap_segmenter_parallel'
-    train_data = StockDataset(
-        data_folder=root_data_dir,
+    train_data = SniperDataset(
         split='train',
-        should_add_technical_indicator=True
+        segment_data_dir=f'{DATA_DIR}/sniper_training_data_3'
     )
 
-    test_data = StockDataset(
-        data_folder=root_data_dir,
+    test_data = SniperDataset(
         split='test',
-        should_add_technical_indicator=True
+        segment_data_dir=f'{DATA_DIR}/sniper_training_data_3'
     )
 
     train_loader = DataLoader(train_data, num_workers=1, shuffle=True, batch_size=BATCH_SIZE)
     test_loader = DataLoader(test_data, num_workers=1, shuffle=True, batch_size=BATCH_SIZE)
 
-    inputs, sequence_length = next(iter(train_loader))
-
-    inputs, original_sequence_lengths = next(iter(train_loader))
-    inputs  # shape: 10, 390, 7
+    inputs, label, original_sequence_lengths = next(iter(train_loader))
+    inputs  # shape: batch_size, seq_length, feature_length
     [batch_size, seq_length, num_features] = inputs.size()
 
     model = SniperGRU(
         input_size=num_features,
-        hidden_size=5 * num_features
+        hidden_size=5 * num_features,
+        num_layers=num_layers,
+        num_classes=num_classes
     )
     if torch.cuda.is_available():
         model = model.cuda()
 
-    best_grud, losses_grud = train(model, train_loader, test_loader)
+    best_grud, losses_grud = train(
+        model,
+        train_loader,
+        test_loader,
+        num_epochs=num_epochs
+    )
