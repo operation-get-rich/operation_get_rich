@@ -102,7 +102,7 @@ class SniperDataset(torch.utils.data.Dataset):
 class PercentChangeNormalizer:
     @classmethod
     def normalize_volume(cls, data, dataset_name):
-        with open(os.path.join(PROJECT_ROOT_DIR, 'statistics_dataset.json'), 'r') as f:
+        with open(os.path.join(PROJECT_ROOT_DIR, 'dataset_statistics.json'), 'r') as f:
             stats = json.load(f)
 
         assert dataset_name in stats, f"{dataset_name} statistics is not found yet"
