@@ -12,8 +12,7 @@ from torch.utils.data import DataLoader
 
 from directories import DATA_DIR
 from experiment_sniper_gru.SniperGRU import SniperGRU
-from experiment_sniper_gru.dataset import OPEN_COLUMN_INDEX, SniperDataset
-from experiment_sniper_gru.normalizer import PercentChangeNormalizer
+from experiment_sniper_gru.dataset import OPEN_COLUMN_INDEX, SniperDataset, PercentChangeNormalizer
 
 import multiprocessing
 
@@ -130,11 +129,8 @@ def _train(train_loader, trader_gru_model, optimizer, loss_function, batch_size)
         if features.shape[0] != batch_size:
             continue
 
-        outputs = get_model_output(
-            features=features,
-            model=trader_gru_model,
-            original_sequence_lengths=original_sequence_lengths
-        )  # shape: batch_size x 1
+        normalized_features = Variable(features).to(device)
+        outputs = trader_gru_model(normalized_features, original_sequence_lengths)  # batch_size x 1
 
         loss = loss_function(outputs, labels)
         accuracy = _binary_accuracy(outputs, labels)
@@ -156,11 +152,8 @@ def _validate(valid_loader, trader_gru_model, loss_function, batch_size):
         if features.shape[0] != batch_size:
             continue
 
-        outputs = get_model_output(
-            features=features,
-            model=trader_gru_model,
-            original_sequence_lengths=original_sequence_lengths
-        )
+        normalized_features = Variable(features).to(device)
+        outputs = trader_gru_model(normalized_features, original_sequence_lengths)  # batch_size x 1
 
         loss = loss_function(outputs, labels)
         accuracy = _binary_accuracy(outputs, labels)
@@ -176,16 +169,6 @@ def get_model_output(
         model,  # type: SniperGRU
         original_sequence_lengths,
 ):
-    # TODO: Should we change the way we normalize volume?
-    #  Find technique of normalization that keeps updating whenever new data comes in
-    normalized_features = PercentChangeNormalizer.normalize_volume(
-        features)  # size: batch_size x sequence_length x feature_length
-    normalized_features = PercentChangeNormalizer.normalize_price_into_percent_change(normalized_features)
-
-    normalized_features = Variable(normalized_features).to(device)
-
-    outputs = model(normalized_features, original_sequence_lengths)  # batch_size x 1
-
     return outputs
 
 
