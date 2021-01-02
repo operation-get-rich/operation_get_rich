@@ -21,14 +21,15 @@ def date_segment_organized_parser(root_data_dir):
         for segment in sorted(os.listdir(os.path.join(root_data_dir, the_date))):
             segment_file_path = os.path.join(root_data_dir, the_date, segment)
             entire_segments_df = entire_segments_df.append(pd.read_csv(segment_file_path))
+    return entire_segments_df
 
 
 def segment_organized_parser(root_data_dir):
     entire_segments_df = pd.DataFrame()
-    for company in os.listdir(root_data_dir):
-        for segment in os.listdir(os.path.join(root_data_dir, company)):
-            segment_file_path = os.path.join(root_data_dir, company, segment)
-            entire_segments_df = entire_segments_df.append(pd.read_csv(segment_file_path))
+    for segment in os.listdir(os.path.join(root_data_dir)):
+        segment_file_path = os.path.join(root_data_dir, segment)
+        entire_segments_df = entire_segments_df.append(pd.read_csv(segment_file_path))
+    return entire_segments_df
 
 
 dataset_name_to_parser = {
