@@ -8,7 +8,7 @@ __pycache__/config.cpython-36.pyc
 gaped_up_stocks/
 __pycache__/
 *.output
-!gaped_up_stocks_early_volume_1e5_gap_10_statistics.csv
+!statistics_gaped_up_stocks_early_volume_1e5_gap_10.csv
 
 early_day_gap_refactor_0.1_0/
 runs/
