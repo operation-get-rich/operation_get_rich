@@ -1,3 +1,4 @@
+import json
 import os
 import random
 
@@ -8,7 +9,7 @@ from ta.momentum import RSIIndicator
 from ta.trend import EMAIndicator
 from ta.volume import VolumeWeightedAveragePrice
 
-from directories import DATA_DIR
+from directories import PROJECT_ROOT_DIR
 
 TECHNICAL_INDICATOR_PERIOD = 14
 SEQUENCE_LENGTH = 390
@@ -26,6 +27,7 @@ RSI_COLUMN_INDEX = 7
 class SniperDataset(torch.utils.data.Dataset):
     TECHNICAL_INDICATOR_PERIOD = 14
     SEQUENCE_LENGTH = 390
+    TRUE_DATASET_NAME = 'polygon_early_day_gap_segmenter_parallel'
 
     def __init__(self, split, segment_data_dir):
         self.segment_data_dir = segment_data_dir
@@ -70,6 +72,14 @@ class SniperDataset(torch.utils.data.Dataset):
 
         selected_segment_np = selected_segment_df[self.TECHNICAL_INDICATOR_PERIOD:].to_numpy()
 
+        selected_segment_np = PercentChangeNormalizer.normalize_price_into_percent_change(selected_segment_np)
+        # TODO: Should we change the way we normalize volume?
+        #  Find technique of normalization that keeps updating whenever new data comes in
+        selected_segment_np = PercentChangeNormalizer.normalize_volume(
+            selected_segment_np,
+            dataset_name=self.TRUE_DATASET_NAME
+        )
+
         selected_segment_length = selected_segment_np.shape[0]
         if selected_segment_length < self.SEQUENCE_LENGTH:
             selected_segment_np = np.vstack(
@@ -87,3 +97,57 @@ class SniperDataset(torch.utils.data.Dataset):
 
     def __len__(self):
         return len(self.segment_list)
+
+
+class PercentChangeNormalizer:
+    @classmethod
+    def normalize_volume(cls, data, dataset_name):
+        with open(os.path.join(PROJECT_ROOT_DIR, 'statistics_dataset.json'), 'r') as f:
+            stats = json.load(f)
+
+        assert dataset_name in stats, f"{dataset_name} statistics is not found yet"
+
+        data = np.copy(data)
+        data[:, VOLUME_COLUMN_INDEX] -= stats[dataset_name]['volume']['mean']
+        data[:, VOLUME_COLUMN_INDEX] /= stats[dataset_name]['volume']['std']
+        return data
+
+    @classmethod
+    def normalize_price_into_percent_change(cls, data):
+        data = np.copy(data)
+        anchor_open_price = data[0, OPEN_COLUMN_INDEX]
+        anchor_close_price = data[0, CLOSE_COLUMN_INDEX]
+        anchor_low_price = data[0, LOW_COLUMN_INDEX]
+        anchor_high_price = data[0, HIGH_COLUMN_INDEX]
+        anchor_vwap = data[0, VWAP_COLUMN_INDEX]
+        anchor_ema = data[0, EMA_COLUMN_INDEX]
+
+        for i in range(0, data.shape[0]):
+            data[i, OPEN_COLUMN_INDEX] = cls._compute_percent_change(
+                anchor_open_price,
+                data[i, OPEN_COLUMN_INDEX])
+
+            data[i, CLOSE_COLUMN_INDEX] = cls._compute_percent_change(
+                anchor_close_price,
+                data[i, CLOSE_COLUMN_INDEX])
+
+            data[i, LOW_COLUMN_INDEX] = cls._compute_percent_change(
+                anchor_low_price,
+                data[i, LOW_COLUMN_INDEX])
+
+            data[i, HIGH_COLUMN_INDEX] = cls._compute_percent_change(
+                anchor_high_price,
+                data[i, HIGH_COLUMN_INDEX])
+
+            data[i, VWAP_COLUMN_INDEX] = cls._compute_percent_change(
+                anchor_vwap,
+                data[i, VWAP_COLUMN_INDEX])
+
+            data[i, EMA_COLUMN_INDEX] = cls._compute_percent_change(
+                anchor_ema,
+                data[i, EMA_COLUMN_INDEX])
+        return data
+
+    @classmethod
+    def _compute_percent_change(cls, p1, p2):
+        return (p2 / p1) - 1
