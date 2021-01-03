@@ -3,6 +3,7 @@ import time
 
 import numpy as np
 
+import matplotlib.pyplot as plt
 import torch
 from sklearn.metrics import recall_score, precision_score, f1_score
 from torch.autograd import Variable
@@ -55,15 +56,24 @@ def train(
     is_least_error_model = 0
     patient_epoch = 0
     min_loss_epoch_valid = 10000.0
+    avg_losses_train = []
+    avg_losses_valid = []
 
     is_max_recall_model = 1
     max_recall_valid = 0
+    avg_recalls_train = []
+    avg_recalls_valid = []
 
     is_max_precision_model = 1
     max_precision_valid = 0
+    avg_precisions_train = []
+    avg_precisions_valid = []
 
     is_max_f1_model = 1
     max_f1_valid = 0
+    avg_f1s_train = []
+    avg_f1s_valid = []
+
     for epoch in range(num_epochs):
         (
             avg_loss_train,
@@ -77,6 +87,10 @@ def train(
             loss_function,
             batch_size
         )
+        avg_losses_train.append(avg_loss_train)
+        avg_recalls_train.append(avg_recall_train)
+        avg_precisions_train.append(avg_precision_train)
+        avg_f1s_train.append(avg_f1_train)
 
         (
             avg_loss_valid,
@@ -89,6 +103,10 @@ def train(
             loss_function,
             batch_size
         )
+        avg_losses_train.append(avg_loss_valid)
+        avg_recalls_train.append(avg_recall_valid)
+        avg_precisions_train.append(avg_precision_valid)
+        avg_f1s_train.append(avg_f1_valid)
 
         torch.save(trader_gru_model.state_dict(), args.save + "/latest_model.pt")
 
@@ -166,6 +184,25 @@ def train(
         )
         pre_time = cur_time
 
+    plt.title('Training')
+    plt.plot(avg_losses_train, label='loss')
+    plt.plot(avg_recalls_train, label='recall')
+    plt.plot(avg_precisions_train, label='precision')
+    plt.plot(avg_f1s_train, label='f1')
+
+    plt.legend()
+    plt.savefig(f'{args.save}/training_metrics.png')
+
+    plt.clf()
+    plt.title('Validation')
+    plt.plot(avg_losses_valid, label='loss')
+    plt.plot(avg_recalls_valid, label='recall')
+    plt.plot(avg_precisions_valid, label='precision')
+    plt.plot(avg_f1s_valid, label='f1')
+
+    plt.legend()
+    plt.savefig(f'{args.save}/validation_metrics.png')
+
 
 def _train(train_loader, trader_gru_model, optimizer, loss_function, batch_size):
     loss_sum = torch.tensor(0).float()
@@ -229,6 +266,7 @@ def _validate(valid_loader, trader_gru_model, loss_function, batch_size):
         recall_sum += recall
         precision_sum += precision
         f1_sum += f1
+
     return (
         loss_sum.detach().numpy() / len(train_loader),
         recall_sum.detach().numpy() / len(train_loader),
