@@ -1,22 +1,19 @@
 import argparse
 import time
-from typing import List, Tuple
 
 import numpy as np
-import pandas
 
 import torch
-from torch import Tensor
+from sklearn.metrics import recall_score, precision_score, f1_score
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
 
 from directories import DATA_DIR
 from experiment_sniper_gru.SniperGRU import SniperGRU
-from experiment_sniper_gru.dataset import OPEN_COLUMN_INDEX, SniperDataset, PercentChangeNormalizer
+from experiment_sniper_gru.dataset import SniperDataset
 
 import multiprocessing
 
-from experiment_vanilla_gru.dataset_vanilla_gru import CLOSE_COLUMN_INDEX
 from utils import create_dir
 
 multiprocessing.set_start_method("spawn", True)
@@ -55,11 +52,25 @@ def train(
     pre_time = time.time()
 
     # Variables for Early Stopping
-    is_best_model = 0
+    is_least_error_model = 0
     patient_epoch = 0
     min_loss_epoch_valid = 10000.0
+
+    is_max_recall_model = 1
+    max_recall_valid = 0
+
+    is_max_precision_model = 1
+    max_precision_valid = 0
+
+    is_max_f1_model = 1
+    max_f1_valid = 0
     for epoch in range(num_epochs):
-        losses_epoch_train, accuracies_epoch_train = _train(
+        (
+            avg_loss_train,
+            avg_recall_train,
+            avg_precision_train,
+            avg_f1_train
+        ) = _train(
             train_loader,
             trader_gru_model,
             optimizer,
@@ -67,7 +78,12 @@ def train(
             batch_size
         )
 
-        losses_epoch_valid, accuracies_epoch_valid = _validate(
+        (
+            avg_loss_valid,
+            avg_recall_valid,
+            avg_precision_valid,
+            avg_f1_valid
+        ) = _validate(
             valid_loader,
             trader_gru_model,
             loss_function,
@@ -76,28 +92,40 @@ def train(
 
         torch.save(trader_gru_model.state_dict(), args.save + "/latest_model.pt")
 
-        avg_losses_epoch_train = sum(losses_epoch_train).cpu().detach().numpy() / float(len(losses_epoch_train))
-        avg_losses_epoch_valid = sum(losses_epoch_valid).cpu().detach().numpy() / float(len(losses_epoch_valid))
-
-        avg_accuracies_epoch_train = (sum(accuracies_epoch_train).cpu().detach().numpy()
-                                      / float(len(losses_epoch_train)))
-        avg_accuracies_epoch_valid = (sum(accuracies_epoch_valid).cpu().detach().numpy()
-                                      / float(len(losses_epoch_valid)))
-
         # Early Stopping
         if epoch == 0:
-            is_best_model = 1
-            if avg_losses_epoch_valid < min_loss_epoch_valid:
-                min_loss_epoch_valid = avg_losses_epoch_valid
+            is_least_error_model = 1
+            if avg_loss_valid < min_loss_epoch_valid:
+                min_loss_epoch_valid = avg_loss_valid
         else:
-            if min_loss_epoch_valid - avg_losses_epoch_valid > min_delta:
-                is_best_model = 1
-                min_loss_epoch_valid = avg_losses_epoch_valid
+            if min_loss_epoch_valid - avg_loss_valid > min_delta:
+                is_least_error_model = 1
+                min_loss_epoch_valid = avg_loss_valid
                 patient_epoch = 0
+                torch.save(trader_gru_model.state_dict(), args.save + "/least_error_model.pt")
 
-                torch.save(trader_gru_model.state_dict(), args.save + "/best_model.pt")
+            if avg_recall_valid > max_recall_valid:
+                is_max_recall_model = 1
+                max_recall_valid = avg_recall_valid
+                patient_epoch = 0
+                torch.save(trader_gru_model.state_dict(), args.save + "/max_recall_model.pt")
+
+            if avg_precision_valid > max_precision_valid:
+                is_max_precision_model = 1
+                max_precision_valid = avg_precision_valid
+                patient_epoch = 0
+                torch.save(trader_gru_model.state_dict(), args.save + "/max_precision_model.pt")
+
+            if avg_f1_valid > max_f1_valid:
+                is_max_f1_model = 1
+                max_f1_valid = avg_f1_valid
+                patient_epoch = 0
+                torch.save(trader_gru_model.state_dict(), args.save + "/max_f1_model.pt")
             else:
-                is_best_model = 0
+                is_least_error_model = 0
+                is_max_recall_model = 0
+                is_max_precision_model = 0
+                is_max_f1_model = 0
                 patient_epoch += 1
                 if patient_epoch >= patience:
                     print('Early Stopped at Epoch:', epoch)
@@ -106,22 +134,46 @@ def train(
         # Print training parameters
         cur_time = time.time()
         print(
-            'Epoch: {}, train_loss: {}, valid_loss: {}, train_acc: {}, valid_acc: {}, time: {}, best model: {}'.format(
+            'Epoch: {}, '
+            'train_loss: {}, '
+            'valid_loss: {}, '
+            'train_precision: {}, '
+            'valid_precision: {}, '
+            'train_recall: {}, '
+            'valid_recall: {}, '
+            'train_f1: {}, '
+            'valid_f1: {}, '
+            'time: {}, '
+            'least error model: {}'
+            'max_precision_model: {}'
+            'max_recall_model: {}'
+            'max_f1_model: {}'.format(
                 epoch,
-                np.around(avg_losses_epoch_train, decimals=8),
-                np.around(avg_losses_epoch_valid, decimals=8),
-                np.around(avg_accuracies_epoch_train, decimals=8),
-                np.around(avg_accuracies_epoch_valid, decimals=8),
+                np.around(avg_loss_train, decimals=8),
+                np.around(avg_loss_valid, decimals=8),
+                np.around(avg_precision_train, decimals=8),
+                np.around(avg_precision_valid, decimals=8),
+                np.around(avg_recall_train, decimals=8),
+                np.around(avg_recall_valid, decimals=8),
+                np.around(avg_f1_train, decimals=8),
+                np.around(avg_f1_valid, decimals=8),
                 np.around([cur_time - pre_time], decimals=2),
-                is_best_model)
+                is_least_error_model,
+                is_max_precision_model,
+                is_max_recall_model,
+                is_max_f1_model,
+            )
         )
         pre_time = cur_time
 
 
 def _train(train_loader, trader_gru_model, optimizer, loss_function, batch_size):
-    losses_epoch_train = []
-    accuracies_epoch_train = []
+    loss_sum = torch.tensor(0).float()
+    recall_sum = torch.tensor(0).float()
+    precision_sum = torch.tensor(0).float()
+    f1_sum = torch.tensor(0).float()
     for features, labels, original_sequence_lengths in train_loader:
+        print(f'i = {i}')
         features = features.float().to(device)  # shape: batch_size x sequence_length x feature_length
         labels = labels.float().to(device)  # shape: batch_size
         original_sequence_lengths = original_sequence_lengths.to(device)  # shape: batch_size
@@ -133,22 +185,37 @@ def _train(train_loader, trader_gru_model, optimizer, loss_function, batch_size)
         outputs = trader_gru_model(normalized_features, original_sequence_lengths)  # batch_size x 1
 
         loss = loss_function(outputs, labels)
-        accuracy = _binary_accuracy(outputs, labels)
+        recall, precision, f1 = _get_evaluation_metric(outputs, labels)
 
-        losses_epoch_train.append(loss)
-        accuracies_epoch_train.append(accuracy)
+        loss_sum += loss
+        recall_sum += recall
+        precision_sum += precision
+        f1_sum += f1
 
         trader_gru_model.zero_grad()
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-    return losses_epoch_train, accuracies_epoch_train
+    return (
+        loss_sum.detach().numpy() / len(train_loader),
+        recall_sum.detach().numpy() / len(train_loader),
+        precision_sum.detach().numpy() / len(train_loader),
+        f1_sum.detach().numpy() / len(train_loader)
+    )
 
 
 def _validate(valid_loader, trader_gru_model, loss_function, batch_size):
-    losses_epoch_valid = []
-    accuracies_epoch_valid = []
-    for features, labels, original_sequence_lengths_val in valid_loader:
+    loss_sum = torch.tensor(0).float()
+    recall_sum = torch.tensor(0).float()
+    precision_sum = torch.tensor(0).float()
+    f1_sum = torch.tensor(0).float()
+
+    for features, labels, original_sequence_lengths in valid_loader:
+        print(f'i = {i}')
+        features = features.float().to(device)  # shape: batch_size x sequence_length x feature_length
+        labels = labels.float().to(device)  # shape: batch_size
+        original_sequence_lengths = original_sequence_lengths.to(device)  # shape: batch_size
+
         if features.shape[0] != batch_size:
             continue
 
@@ -156,29 +223,32 @@ def _validate(valid_loader, trader_gru_model, loss_function, batch_size):
         outputs = trader_gru_model(normalized_features, original_sequence_lengths)  # batch_size x 1
 
         loss = loss_function(outputs, labels)
-        accuracy = _binary_accuracy(outputs, labels)
+        recall, precision, f1 = _get_evaluation_metric(outputs, labels)
 
-        losses_epoch_valid.append(loss)
-        accuracies_epoch_valid.append(accuracy)
+        loss_sum += loss
+        recall_sum += recall
+        precision_sum += precision
+        f1_sum += f1
+    return (
+        loss_sum.detach().numpy() / len(train_loader),
+        recall_sum.detach().numpy() / len(train_loader),
+        precision_sum.detach().numpy() / len(train_loader),
+        f1_sum.detach().numpy() / len(train_loader)
+    )
 
-    return losses_epoch_valid, accuracies_epoch_valid
 
-
-def get_model_output(
-        features,  # size: batch_size x sequence_length x feature_length
-        model,  # type: SniperGRU
-        original_sequence_lengths,
+def _get_evaluation_metric(
+        outputs,  # batch_size x 1
+        y,  # batch_size x 1
 ):
-    return outputs
-
-
-def _binary_accuracy(outputs, y):
     # round predictions to the closest integer
-    rounded_preds = torch.where(outputs > 0.8, 1, 0)  # if output > 0.8 outputs 1 else 0
+    rounded_preds = torch.where(outputs > 0.5, 1, 0)  # if output > 0.8 outputs 1 else 0
 
-    correct = (rounded_preds == y).float()
-    acc = correct.sum() / len(correct)
-    return acc
+    recall = recall_score(y_true=y, y_pred=rounded_preds)
+    precision = precision_score(y_true=y, y_pred=rounded_preds)
+    f1 = f1_score(y_true=y, y_pred=rounded_preds)
+
+    return recall, precision, f1
 
 
 if __name__ == "__main__":
