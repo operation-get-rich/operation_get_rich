@@ -307,12 +307,12 @@ if __name__ == "__main__":
 
     train_data = SniperDataset(
         split='train',
-        segment_data_dir=f'{DATA_DIR}/sniper_training_data_3'
+        dataset_name=f'sniper_training_data_3',
     )
 
     test_data = SniperDataset(
         split='test',
-        segment_data_dir=f'{DATA_DIR}/sniper_training_data_3'
+        dataset_name=f'sniper_training_data_3'
     )
 
     train_loader = DataLoader(train_data, num_workers=1, shuffle=True, batch_size=BATCH_SIZE)
