@@ -9,7 +9,7 @@ from ta.momentum import RSIIndicator
 from ta.trend import EMAIndicator
 from ta.volume import VolumeWeightedAveragePrice
 
-from directories import PROJECT_ROOT_DIR
+from directories import PROJECT_ROOT_DIR, DATA_DIR
 
 TECHNICAL_INDICATOR_PERIOD = 14
 SEQUENCE_LENGTH = 390
@@ -27,10 +27,10 @@ RSI_COLUMN_INDEX = 7
 class SniperDataset(torch.utils.data.Dataset):
     TECHNICAL_INDICATOR_PERIOD = 14
     SEQUENCE_LENGTH = 390
-    TRUE_DATASET_NAME = 'polygon_early_day_gap_segmenter_parallel'
 
-    def __init__(self, split, segment_data_dir):
-        self.segment_data_dir = segment_data_dir
+    def __init__(self, split, dataset_name):
+        self.dataset_name = dataset_name
+        self.segment_data_dir = f'{DATA_DIR}/{self.dataset_name}'
         self.segment_list = os.listdir(self.segment_data_dir)
 
         random.seed(69420)
@@ -77,7 +77,7 @@ class SniperDataset(torch.utils.data.Dataset):
         #  Find technique of normalization that keeps updating whenever new data comes in
         selected_segment_np = PercentChangeNormalizer.normalize_volume(
             selected_segment_np,
-            dataset_name=self.TRUE_DATASET_NAME
+            dataset_name=self.dataset_name
         )
 
         selected_segment_length = selected_segment_np.shape[0]
