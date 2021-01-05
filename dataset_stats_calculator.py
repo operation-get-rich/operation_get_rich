@@ -64,4 +64,4 @@ def compute_stats(dataset_name):
         json.dump(statistics_dataset, f)
 
 
-compute_stats('polygon_early_day_gap_segmenter_parallel')
+compute_stats('sniper_training_data_3')
