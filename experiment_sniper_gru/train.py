@@ -9,7 +9,6 @@ from sklearn.metrics import recall_score, precision_score, f1_score
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
 
-from directories import DATA_DIR
 from experiment_sniper_gru.SniperGRU import SniperGRU
 from experiment_sniper_gru.dataset import SniperDataset
 
