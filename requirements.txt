@@ -1,7 +1,6 @@
 alpaca-trade-api==0.50.1
 args==0.1.0
 attrs==20.3.0
-blis==0.7.4
 catalogue==1.0.0
 certifi==2020.6.20
 chardet==3.0.4
