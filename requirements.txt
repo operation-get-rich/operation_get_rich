@@ -16,7 +16,7 @@ scipy==1.5.4
 six==1.15.0
 sklearn==0.0
 ta==0.5.25
-TA-Lib==0.4.19
+TA-Lib
 torch==1.7.1
 torchtext==0.8.1
 torchvision==0.8.2
