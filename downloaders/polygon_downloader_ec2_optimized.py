@@ -34,8 +34,6 @@ api = tradeapi.REST(
 def main():
     tickers = get_all_ticker_names()
 
-    tickers = ['OPTT', 'EDSA']
-
     entire_stocks_df = _build_entire_stocks_df(tickers)
 
     entire_stocks_df.to_csv(path_or_buf=f'{SAVE_PATH_DIR}/stocks.csv', mode='w')
