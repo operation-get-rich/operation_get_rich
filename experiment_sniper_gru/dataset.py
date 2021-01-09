@@ -19,9 +19,10 @@ CLOSE_COLUMN_INDEX = 1
 LOW_COLUMN_INDEX = 2
 HIGH_COLUMN_INDEX = 3
 VOLUME_COLUMN_INDEX = 4
-VWAP_COLUMN_INDEX = 5
-EMA_COLUMN_INDEX = 6
-RSI_COLUMN_INDEX = 7
+IS_MARKET_OPEN_INDEX = 5
+VWAP_COLUMN_INDEX = 6
+EMA_COLUMN_INDEX = 7
+RSI_COLUMN_INDEX = 8
 
 
 class SniperDataset(torch.utils.data.Dataset):
@@ -46,7 +47,17 @@ class SniperDataset(torch.utils.data.Dataset):
         selected_segment = self.segment_list[index]
         selected_segment_full_path = f'{self.segment_data_dir}/{selected_segment}'
 
-        selected_segment_df = pandas.read_csv(filepath_or_buffer=selected_segment_full_path)
+        selected_segment_df = pandas.read_csv(
+            filepath_or_buffer=selected_segment_full_path,
+            parse_dates=['time']
+        )
+
+        anchor_datetime = selected_segment_df.iloc[0]['time']
+        market_open_datetime = anchor_datetime.replace(hour=9, minute=30)
+
+        selected_segment_df['is_market_open'] = selected_segment_df['time'] >= market_open_datetime
+        selected_segment_df['is_market_open'] = selected_segment_df['is_market_open'].astype(float)
+
         selected_segment_df = selected_segment_df.drop(labels=['ticker', 'time'], axis=1)
 
         selected_label = selected_segment_df.label.iloc[0]
@@ -73,6 +84,7 @@ class SniperDataset(torch.utils.data.Dataset):
         selected_segment_np = selected_segment_df[self.TECHNICAL_INDICATOR_PERIOD:].to_numpy()
 
         selected_segment_np = PercentChangeNormalizer.normalize_price_into_percent_change(selected_segment_np)
+
         # TODO: Should we change the way we normalize volume?
         #  Find technique of normalization that keeps updating whenever new data comes in
         selected_segment_np = PercentChangeNormalizer.normalize_volume(
