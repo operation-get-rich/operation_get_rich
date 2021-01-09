@@ -2,17 +2,17 @@
 Downloader that is optimized for S3: It will store all stocks data in 1 file
 """
 
+import time
 from datetime import timedelta
-import signal
 from typing import AnyStr, List
 
 import alpaca_trade_api as tradeapi
 import numpy as np
 import pandas as pd
 from dateutil.parser import parse
-from pandas import DataFrame
 
 from config import ALPACA_KEY_ID, ALPACA_SECRET_KEY, ALPACA_BASE_URL
+from decorators import retry_with_timeout, RetryTimeoutError
 from directories import DATA_DIR
 from utils import get_all_ticker_names, create_dir, get_current_datetime, get_alpaca_time_str_format
 
@@ -35,16 +35,17 @@ api = tradeapi.REST(
 def main():
     tickers = get_all_ticker_names()
 
-    entire_stocks_df = _build_entire_stocks_df(tickers)
+    tickers = ['TSLA', 'MSFT', 'AAPL']
 
-    entire_stocks_df.to_csv(path_or_buf=f'{SAVE_PATH_DIR}/stocks.csv', mode='w')
+    _download_all_tickers(tickers)
+
+    # TODO: Implement the merging into one file
 
 
-def _build_entire_stocks_df(tickers):
-    # type: (List[AnyStr]) -> DataFrame
+def _download_all_tickers(tickers):
+    # type: (List[AnyStr]) -> None
     date_tuples = _construct_date_tuples(START_DATE, END_DATE)
     start = 0
-    total_df = pd.DataFrame()
     failed_tickers = []
     while start < len(tickers):
         end = min(len(tickers), start + COMPANY_STEPS)
@@ -53,8 +54,7 @@ def _build_entire_stocks_df(tickers):
         print("Downloading Tickers: ", tickers[start:end], flush=True)
 
         to_download_tickers = tickers[start:end]
-
-        data, inner_failed_tickers = _download_tickers(to_download_tickers, date_tuples)
+        data, inner_failed_tickers = _download_some_tickers(to_download_tickers, date_tuples)
 
         failed_tickers += inner_failed_tickers
 
@@ -65,23 +65,57 @@ def _build_entire_stocks_df(tickers):
 
         data_np = np.array(data)
         df = pd.DataFrame(data_np, columns=['ticker', 'time', 'open', 'close', 'low', 'high', 'volume'])
-        total_df = total_df.append(df)
+
+        df.to_csv(path_or_buf=f'{SAVE_PATH_DIR}/stocks_{start}_{end}.csv')
 
         print("Iteration done downloading: ", start, flush=True)
         start += COMPANY_STEPS
 
-    log_failed_tickers(failed_tickers)
-
-    return total_df
+    _log_failed_tickers(failed_tickers)
 
 
-def log_failed_tickers(failed_tickers):
-    print('\n***Failure Report***')
-    print(f'\n{len(failed_tickers)} tickers failed')
-    for failed_ticker, failed_start_time, failed_end_time in failed_tickers:
-        print(f'\n{failed_ticker}')
-        print(f'{failed_start_time}')
-        print(f'{failed_end_time}')
+def _download_some_tickers(to_download_tickers, date_tuples):
+    data = []
+    failed_tickers = []
+    for ticker in to_download_tickers:
+        for start_date, end_date in date_tuples:
+            print(f'Downloading {ticker}')
+            print(f'start_date = {start_date}')
+            print(f'end_date = {end_date}\n')
+
+            try:
+                ticker_aggregate = _download_ticker(ticker, start_date, end_date)
+            except RetryTimeoutError as exc:
+                print(exc)
+                failed_tickers.append((ticker, start_date, end_date))
+                break
+
+            for prices in ticker_aggregate:
+                data.append(
+                    [
+                        ticker,
+                        str(prices.timestamp),
+                        prices.open,
+                        prices.close,
+                        prices.low,
+                        prices.high,
+                        prices.volume
+                    ]
+                )
+    return data, failed_tickers
+
+
+@retry_with_timeout(timeout=1)
+def _download_ticker(ticker, start_date, end_date):
+    if ticker == 'TSLA':
+        time.sleep(2)
+    return api.polygon.historic_agg_v2(
+        symbol=ticker,
+        multiplier=1,
+        timespan='minute',
+        _from=start_date,
+        to=end_date
+    )
 
 
 def _construct_date_tuples(start_date, end_date):
@@ -103,48 +137,13 @@ def _construct_date_tuples(start_date, end_date):
     return date_tuples
 
 
-def _download_tickers(to_download_tickers, date_tuples):
-    data = []
-    failed_tickers = []
-    for ticker in to_download_tickers:
-        for start_date, end_date in date_tuples:
-            print(f'Downloading {ticker}')
-            print(f'start_date = {start_date}')
-            print(f'end_date = {end_date}\n')
-
-            ticker_aggregate = None
-            for _ in range(2):
-                try:
-                    # ticker_aggregate = _download_ticker(ticker, start_date, end_date)
-                    ticker_aggregate = api.polygon.historic_agg_v2(
-                        symbol=ticker,
-                        multiplier=1,
-                        timespan='minute',
-                        _from=start_date,
-                        to=end_date
-                    )
-                    break
-                except Exception as exc:
-                    print(exc)
-
-            if not ticker_aggregate:
-                # Failed to download due to timeout
-                failed_tickers.append((ticker, start_date, end_date))
-                break
-
-            for prices in ticker_aggregate:
-                data.append(
-                    [
-                        ticker,
-                        str(prices.timestamp),
-                        prices.open,
-                        prices.close,
-                        prices.low,
-                        prices.high,
-                        prices.volume
-                    ]
-                )
-    return data, failed_tickers
+def _log_failed_tickers(failed_tickers):
+    print('\n***Failure Report***')
+    print(f'\n{len(failed_tickers)} tickers failed')
+    for failed_ticker, failed_start_time, failed_end_time in failed_tickers:
+        print(f'\n{failed_ticker}')
+        print(f'{failed_start_time}')
+        print(f'{failed_end_time}')
 
 
 # def _download_ticker(ticker, start_date, end_date):
