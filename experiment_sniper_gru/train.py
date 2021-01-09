@@ -32,6 +32,9 @@ BATCH_SIZE = 10
 # check whether cuda is available
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+IS_TEST_MODE = False
+TEST_MODE_ITERATION_LIMIT = 100
+
 
 def train(
         trader_gru_model,  # type: SniperGRU
@@ -162,9 +165,9 @@ def train(
             'train_f1: {}, '
             'valid_f1: {}, '
             'time: {}, '
-            'least error model: {}'
-            'max_precision_model: {}'
-            'max_recall_model: {}'
+            'least error model: {}, '
+            'max_precision_model: {}, '
+            'max_recall_model: {} '
             'max_f1_model: {}'.format(
                 epoch,
                 np.around(avg_loss_train, decimals=8),
@@ -209,7 +212,11 @@ def _train(train_loader, trader_gru_model, optimizer, loss_function, batch_size)
     recall_sum = torch.tensor(0).float()
     precision_sum = torch.tensor(0).float()
     f1_sum = torch.tensor(0).float()
+
+    test_mode_index = 0  # used just for confirming training are running properly
+
     for features, labels, original_sequence_lengths in train_loader:
+
         features = features.float().to(device)  # shape: batch_size x sequence_length x feature_length
         labels = labels.float().to(device)  # shape: batch_size
         original_sequence_lengths = original_sequence_lengths.to(device)  # shape: batch_size
@@ -232,6 +239,12 @@ def _train(train_loader, trader_gru_model, optimizer, loss_function, batch_size)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+
+        if IS_TEST_MODE:
+            print(f'iteration {test_mode_index}')
+            test_mode_index += 1
+            if test_mode_index == TEST_MODE_ITERATION_LIMIT:
+                break
     return (
         loss_sum.detach().numpy() / len(train_loader),
         recall_sum.detach().numpy() / len(train_loader),
@@ -245,7 +258,7 @@ def _validate(valid_loader, trader_gru_model, loss_function, batch_size):
     recall_sum = torch.tensor(0).float()
     precision_sum = torch.tensor(0).float()
     f1_sum = torch.tensor(0).float()
-
+    test_mode_index = 0
     for features, labels, original_sequence_lengths in valid_loader:
         features = features.float().to(device)  # shape: batch_size x sequence_length x feature_length
         labels = labels.float().to(device)  # shape: batch_size
@@ -264,7 +277,11 @@ def _validate(valid_loader, trader_gru_model, loss_function, batch_size):
         recall_sum += recall
         precision_sum += precision
         f1_sum += f1
-
+        if IS_TEST_MODE:
+            print(f'Valid iteration {test_mode_index}')
+            test_mode_index += 1
+            if test_mode_index == TEST_MODE_ITERATION_LIMIT:
+                break
     return (
         loss_sum.detach().numpy() / len(train_loader),
         recall_sum.detach().numpy() / len(train_loader),
