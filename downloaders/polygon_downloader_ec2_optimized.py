@@ -1,13 +1,14 @@
 """
 Downloader that is optimized for S3: It will store all stocks data in 1 file
 """
-
+import os
 import time
 from datetime import timedelta
 from typing import AnyStr, List
 
 import alpaca_trade_api as tradeapi
 import numpy as np
+import pandas
 import pandas as pd
 from dateutil.parser import parse
 
@@ -35,14 +36,12 @@ api = tradeapi.REST(
 def main():
     tickers = get_all_ticker_names()
 
-    tickers = ['TSLA', 'MSFT', 'AAPL']
+    _download_all_tickers_in_batches(tickers)
 
-    _download_all_tickers(tickers)
-
-    # TODO: Implement the merging into one file
+    _combine_all_stock_batches()
 
 
-def _download_all_tickers(tickers):
+def _download_all_tickers_in_batches(tickers):
     # type: (List[AnyStr]) -> None
     date_tuples = _construct_date_tuples(START_DATE, END_DATE)
     start = 0
@@ -105,10 +104,8 @@ def _download_some_tickers(to_download_tickers, date_tuples):
     return data, failed_tickers
 
 
-@retry_with_timeout(timeout=1)
+@retry_with_timeout(timeout=30)
 def _download_ticker(ticker, start_date, end_date):
-    if ticker == 'TSLA':
-        time.sleep(2)
     return api.polygon.historic_agg_v2(
         symbol=ticker,
         multiplier=1,
@@ -137,6 +134,13 @@ def _construct_date_tuples(start_date, end_date):
     return date_tuples
 
 
+def _combine_all_stock_batches():
+    df = pandas.DataFrame()
+    for stock_batch in os.listdir(SAVE_PATH_DIR):
+        df = df.append(pandas.read_csv(os.path.join(SAVE_PATH_DIR, stock_batch)))
+    df.to_csv(f'{SAVE_PATH_DIR}/stocks_all.csv')
+
+
 def _log_failed_tickers(failed_tickers):
     print('\n***Failure Report***')
     print(f'\n{len(failed_tickers)} tickers failed')
@@ -144,23 +148,6 @@ def _log_failed_tickers(failed_tickers):
         print(f'\n{failed_ticker}')
         print(f'{failed_start_time}')
         print(f'{failed_end_time}')
-
-
-# def _download_ticker(ticker, start_date, end_date):
-#     def handler(signum, frame):
-#         raise TimeoutError("Ticker Download is too long")
-#
-#     signal.signal(signal.SIGALRM, handler)
-#     signal.alarm(30)  # after 30 seconds handler will be called
-#
-#     ticker_aggregate = api.polygon.historic_agg_v2(
-#         symbol=ticker,
-#         multiplier=1,
-#         timespan='minute',
-#         _from=start_date,
-#         to=end_date
-#     )
-#     return ticker_aggregate
 
 
 main()
