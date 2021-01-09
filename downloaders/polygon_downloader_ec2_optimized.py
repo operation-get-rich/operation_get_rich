@@ -45,6 +45,7 @@ def _build_entire_stocks_df(tickers):
     date_tuples = _construct_date_tuples(START_DATE, END_DATE)
     start = 0
     total_df = pd.DataFrame()
+    failed_tickers = []
     while start < len(tickers):
         end = min(len(tickers), start + COMPANY_STEPS)
 
@@ -53,7 +54,9 @@ def _build_entire_stocks_df(tickers):
 
         to_download_tickers = tickers[start:end]
 
-        data = _download_tickers(to_download_tickers, date_tuples)
+        data, inner_failed_tickers = _download_tickers(to_download_tickers, date_tuples)
+
+        failed_tickers += inner_failed_tickers
 
         if not data:
             print('No data', start, tickers[start:end])
@@ -66,7 +69,19 @@ def _build_entire_stocks_df(tickers):
 
         print("Iteration done downloading: ", start, flush=True)
         start += COMPANY_STEPS
+
+    log_failed_tickers(failed_tickers)
+
     return total_df
+
+
+def log_failed_tickers(failed_tickers):
+    print('\n***Failure Report***')
+    print(f'\n{len(failed_tickers)} tickers failed')
+    for failed_ticker, failed_start_time, failed_end_time in failed_tickers:
+        print(f'\n{failed_ticker}')
+        print(f'{failed_start_time}')
+        print(f'{failed_end_time}')
 
 
 def _construct_date_tuples(start_date, end_date):
@@ -90,6 +105,7 @@ def _construct_date_tuples(start_date, end_date):
 
 def _download_tickers(to_download_tickers, date_tuples):
     data = []
+    failed_tickers = []
     for ticker in to_download_tickers:
         for start_date, end_date in date_tuples:
             print(f'Downloading {ticker}')
@@ -103,7 +119,11 @@ def _download_tickers(to_download_tickers, date_tuples):
                     break
                 except Exception as exc:
                     print(exc)
-                    pass
+
+            if not ticker_aggregate:
+                # Failed to download due to timeout
+                failed_tickers.append((ticker, start_date, end_date))
+                break
 
             for prices in ticker_aggregate:
                 data.append(
@@ -117,7 +137,7 @@ def _download_tickers(to_download_tickers, date_tuples):
                         prices.volume
                     ]
                 )
-    return data
+    return data, failed_tickers
 
 
 def _download_ticker(ticker, start_date, end_date):
@@ -125,18 +145,16 @@ def _download_ticker(ticker, start_date, end_date):
         raise TimeoutError("Ticker Download is too long")
 
     signal.signal(signal.SIGALRM, handler)
-    signal.alarm(30)
-    try:
-        ticker_aggregate = api.polygon.historic_agg_v2(
-            symbol=ticker,
-            multiplier=1,
-            timespan='minute',
-            _from=start_date,
-            to=end_date
-        )
-        return ticker_aggregate
-    except Exception:
-        raise
+    signal.alarm(30)  # after 30 seconds handler will be called
+
+    ticker_aggregate = api.polygon.historic_agg_v2(
+        symbol=ticker,
+        multiplier=1,
+        timespan='minute',
+        _from=start_date,
+        to=end_date
+    )
+    return ticker_aggregate
 
 
 main()
