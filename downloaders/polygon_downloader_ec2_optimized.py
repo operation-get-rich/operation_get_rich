@@ -115,7 +115,14 @@ def _download_tickers(to_download_tickers, date_tuples):
             ticker_aggregate = None
             for _ in range(2):
                 try:
-                    ticker_aggregate = _download_ticker(ticker, start_date, end_date)
+                    # ticker_aggregate = _download_ticker(ticker, start_date, end_date)
+                    ticker_aggregate = api.polygon.historic_agg_v2(
+                        symbol=ticker,
+                        multiplier=1,
+                        timespan='minute',
+                        _from=start_date,
+                        to=end_date
+                    )
                     break
                 except TimeoutError as exc:
                     print(exc)
@@ -140,22 +147,21 @@ def _download_tickers(to_download_tickers, date_tuples):
     return data, failed_tickers
 
 
-def _download_ticker(ticker, start_date, end_date):
-    def handler(signum, frame):
-        raise TimeoutError("Ticker Download is too long")
-
-    signal.signal(signal.SIGALRM, handler)
-    signal.alarm(30)  # after 30 seconds handler will be called
-
-    ticker_aggregate = api.polygon.historic_agg_v2(
-        symbol=ticker,
-        multiplier=1,
-        timespan='minute',
-        _from=start_date,
-        to=end_date
-    )
-    signal.alarm(0)
-    return ticker_aggregate
+# def _download_ticker(ticker, start_date, end_date):
+#     def handler(signum, frame):
+#         raise TimeoutError("Ticker Download is too long")
+#
+#     signal.signal(signal.SIGALRM, handler)
+#     signal.alarm(30)  # after 30 seconds handler will be called
+#
+#     ticker_aggregate = api.polygon.historic_agg_v2(
+#         symbol=ticker,
+#         multiplier=1,
+#         timespan='minute',
+#         _from=start_date,
+#         to=end_date
+#     )
+#     return ticker_aggregate
 
 
 main()
