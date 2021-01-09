@@ -154,6 +154,7 @@ def _download_ticker(ticker, start_date, end_date):
         _from=start_date,
         to=end_date
     )
+    signal.alarm(0)
     return ticker_aggregate
 
 
