@@ -1,6 +1,7 @@
 """
 Downloader that is optimized for S3: It will store all stocks data in 1 file
 """
+import argparse
 import os
 import time
 from datetime import timedelta
@@ -32,6 +33,13 @@ api = tradeapi.REST(
     base_url=ALPACA_BASE_URL,
 )
 
+# Arguments
+parser = argparse.ArgumentParser(description='TraderGRU Train')
+
+# General Settings
+parser.add_argument('--start_index', type=int, default=0, help='The download batch start index')
+args = parser.parse_args()
+
 
 def main():
     tickers = get_all_ticker_names()
@@ -44,7 +52,7 @@ def main():
 def _download_all_tickers_in_batches(tickers):
     # type: (List[AnyStr]) -> None
     date_tuples = _construct_date_tuples(START_DATE, END_DATE)
-    start = 0
+    start = args.start_index
     failed_tickers = []
     while start < len(tickers):
         end = min(len(tickers), start + COMPANY_STEPS)
@@ -150,4 +158,5 @@ def _log_failed_tickers(failed_tickers):
         print(f'{failed_end_time}')
 
 
-main()
+if __name__ == "__main__":
+    main()
