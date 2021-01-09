@@ -4,6 +4,7 @@ import time
 import numpy as np
 
 import matplotlib.pyplot as plt
+import pandas
 import torch
 from sklearn.metrics import recall_score, precision_score, f1_score
 from torch.autograd import Variable
@@ -209,7 +210,6 @@ def _train(train_loader, trader_gru_model, optimizer, loss_function, batch_size)
     precision_sum = torch.tensor(0).float()
     f1_sum = torch.tensor(0).float()
     for features, labels, original_sequence_lengths in train_loader:
-        print(f'i = {i}')
         features = features.float().to(device)  # shape: batch_size x sequence_length x feature_length
         labels = labels.float().to(device)  # shape: batch_size
         original_sequence_lengths = original_sequence_lengths.to(device)  # shape: batch_size
@@ -247,7 +247,6 @@ def _validate(valid_loader, trader_gru_model, loss_function, batch_size):
     f1_sum = torch.tensor(0).float()
 
     for features, labels, original_sequence_lengths in valid_loader:
-        print(f'i = {i}')
         features = features.float().to(device)  # shape: batch_size x sequence_length x feature_length
         labels = labels.float().to(device)  # shape: batch_size
         original_sequence_lengths = original_sequence_lengths.to(device)  # shape: batch_size
