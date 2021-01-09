@@ -22,6 +22,7 @@ current_date_time = get_alpaca_time_str_format(get_current_datetime())
 END_DATE = current_date_time
 COMPANY_STEPS = 200
 
+create_dir(DATA_DIR)
 create_dir(SAVE_PATH_DIR)
 
 api = tradeapi.REST(
