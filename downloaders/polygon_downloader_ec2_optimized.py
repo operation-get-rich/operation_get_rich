@@ -117,7 +117,7 @@ def _download_tickers(to_download_tickers, date_tuples):
                 try:
                     ticker_aggregate = _download_ticker(ticker, start_date, end_date)
                     break
-                except Exception as exc:
+                except TimeoutError as exc:
                     print(exc)
 
             if not ticker_aggregate:
