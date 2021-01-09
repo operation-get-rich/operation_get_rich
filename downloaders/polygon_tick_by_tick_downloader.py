@@ -7,7 +7,7 @@ import alpaca_trade_api as tradeapi
 from config import ALPACA_KEY_ID, ALPACA_SECRET_KEY, ALPACA_BASE_URL
 from utils import create_dir, get_current_directory, \
     update_state, DATETIME_FORMAT
-from decorators import retry_download
+from decorators import retry_with_timeout
 
 api = tradeapi.REST(
     key_id=ALPACA_KEY_ID,
@@ -62,7 +62,7 @@ def _download_quotes(symbol, the_date):
             break
     return quotes
 
-@retry_download
+@retry_with_timeout
 def _history_quote_v2_wrapper(lowerbound_timestamp, symbol, the_date):
     symbol_quotes = api.polygon.historic_quotes_v2(
         symbol=symbol,
