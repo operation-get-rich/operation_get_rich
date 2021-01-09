@@ -207,7 +207,7 @@ def train(
     plt.savefig(f'{args.save}/validation_metrics.png')
 
 
-def _train(train_loader, trader_gru_model, optimizer, loss_function, batch_size):
+def _train(train_loader, model, optimizer, loss_function, batch_size):
     loss_sum = torch.tensor(0).float()
     recall_sum = torch.tensor(0).float()
     precision_sum = torch.tensor(0).float()
@@ -225,7 +225,7 @@ def _train(train_loader, trader_gru_model, optimizer, loss_function, batch_size)
             continue
 
         normalized_features = Variable(features).to(device)
-        outputs = trader_gru_model(normalized_features, original_sequence_lengths)  # batch_size x 1
+        outputs = model(normalized_features, original_sequence_lengths)  # batch_size x 1
 
         loss = loss_function(outputs, labels)
         recall, precision, f1 = _get_evaluation_metric(outputs, labels)
@@ -235,7 +235,7 @@ def _train(train_loader, trader_gru_model, optimizer, loss_function, batch_size)
         precision_sum += precision
         f1_sum += f1
 
-        trader_gru_model.zero_grad()
+        model.zero_grad()
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
