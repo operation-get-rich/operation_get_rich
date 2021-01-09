@@ -35,7 +35,7 @@ def _download_quotes(symbol, the_date):
         'ask_price',
         'ask_size',
         'ask_exchange'
-    ])
+    ])  # Column names
     while True:
         if lowerbound_timestamp in lowerbound_timestamps:
             # market close early, lowerbound_timestamp repeats indefinitely
@@ -61,7 +61,6 @@ def _download_quotes(symbol, the_date):
         else:
             break
     return quotes
-
 
 @retry_download
 def _history_quote_v2_wrapper(lowerbound_timestamp, symbol, the_date):
