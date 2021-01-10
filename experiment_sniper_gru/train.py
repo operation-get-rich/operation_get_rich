@@ -8,6 +8,7 @@ import pandas
 import torch
 from sklearn.metrics import recall_score, precision_score, f1_score
 from torch.autograd import Variable
+from torch.nn.utils.rnn import PackedSequence
 from torch.utils.data import DataLoader
 
 from experiment_sniper_gru.SniperGRU import SniperGRU
@@ -224,8 +225,18 @@ def _train(train_loader, model, optimizer, loss_function, batch_size):
         if features.shape[0] != batch_size:
             continue
 
-        normalized_features = Variable(features).to(device)
-        outputs = model(normalized_features, original_sequence_lengths)  # batch_size x 1
+        features = Variable(features).to(device)
+
+        """
+        `pack_padded_sequence` returns a PackedSequence instance that helps the rnn to 
+        compute only on unpadded data
+        """
+        input = torch.nn.utils.rnn.pack_padded_sequence(
+            features,
+            original_sequence_lengths,
+            enforce_sorted=False,
+            batch_first=True)  # type: PackedSequence
+        outputs = model(input)  # batch_size x 1
 
         loss = loss_function(outputs, labels)
         recall, precision, f1 = _get_evaluation_metric(outputs, labels)

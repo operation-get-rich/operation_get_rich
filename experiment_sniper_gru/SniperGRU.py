@@ -1,5 +1,9 @@
+from typing import Union
+
 import torch
 import torch.nn as nn
+from torch import Tensor
+from torch.nn.utils.rnn import PackedSequence
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -19,20 +23,16 @@ class SniperGRU(nn.Module):
 
     def forward(
             self,
-            x,  # shape: batch_size, sequence_length, feature_length
-            original_sequence_lengths,
+            input,  # type: Union[PackedSequence, Tensor]
     ):
-        input = torch.nn.utils.rnn.pack_padded_sequence(
-            x,
-            original_sequence_lengths,
-            enforce_sorted=False,
-            batch_first=True)
+        """
+        During training input is a `PackedSequence` instance.
+        PackedSequence will ensure the model only perform computation on non-padded data for each batch
 
-        batch_size = x.shape[0]
+        During evaluation input is a tensor with size of 1 x sequence_length x feature_length
+        """
 
-        h0 = torch.zeros(self.num_layers, batch_size, self.hidden_size).to(device)
-
-        _, hidden = self.gru(input, h0)
+        _, hidden = self.gru(input)
         # hidden (the last `num_layers` layers of each batch): (num_layers, batch_size, hidden_size)
 
         fc_output = self.fc(hidden[-1])
