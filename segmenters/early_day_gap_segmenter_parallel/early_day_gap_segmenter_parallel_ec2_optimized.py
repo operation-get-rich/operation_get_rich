@@ -40,7 +40,7 @@ def early_day_gap_parallel(
 ):
     stock_price_df = (
         pandas.read_csv(
-            f'{RAW_STOCK_PRICE_DIR}/stocks.csv',
+            f'{RAW_STOCK_PRICE_DIR}/stocks_all.csv',
             parse_dates=['time'],
             keep_default_na=False,
             index_col=0
