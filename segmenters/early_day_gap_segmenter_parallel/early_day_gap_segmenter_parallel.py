@@ -8,7 +8,7 @@ from multiprocessing.pool import Pool
 import pandas
 from pandas import DataFrame
 
-from directories import PROJECT_ROOT_DIR
+from directories import PROJECT_ROOT_DIR, DATA_DIR
 from utils import create_dir, DATETIME_FORMAT, create_file
 
 SEGMENTER_NAME = os.path.basename(__file__).split('.')[0]  # remove .py
@@ -18,8 +18,8 @@ write_dir = f'polygon_{SEGMENTER_NAME}'
 # read_dir = 'test_stock_prices'
 # write_dir = f'test_stock_prices_{SEGMENTER_NAME}'
 
-RAW_STOCK_PRICE_DIR = os.path.join(PROJECT_ROOT_DIR, 'datas', read_dir)
-SEGMENTER_SAVE_DIR = os.path.join(PROJECT_ROOT_DIR, 'datas', write_dir)
+RAW_STOCK_PRICE_DIR = os.path.join(DATA_DIR, read_dir)
+SEGMENTER_SAVE_DIR = os.path.join(DATA_DIR, write_dir)
 create_dir(SEGMENTER_SAVE_DIR)
 
 SEGMENTER_ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -90,28 +90,23 @@ def _segment_stock(stock_path, gap_up_threshold, volume_threshold):
 
 
 def segment_stock_parallel(args):
-    orig_stdout = sys.stdout
-    with open(CONSOLE_OUTPUT_LOCATION, 'a') as console_output_file:
-        sys.stdout = console_output_file
-        stock_path, gap_up_threshold, volume_threshold = args
+    stock_path, gap_up_threshold, volume_threshold = args
 
-        print("Loading Data: {}".format(stock_path), flush=True)
-        try:
-            _segment_stock(stock_path, gap_up_threshold, volume_threshold)
-            print(f'Finished Segmenting {stock_path}')
-            update_state(update_finished_filepaths, stock_path)
-        except Exception as exc:
-            with open(EXCEPTION_OUTPUT_LOCATION, 'a') as f:
-                print('failed_to_segment_stock',
-                      dict(
-                          stock_path=stock_path,
-                          exception=exc,
-                      ),
-                      file=f
-                      )
-            sys.stdout = orig_stdout
-            return
-        sys.stdout = orig_stdout
+    print("Loading Data: {}".format(stock_path), flush=True)
+    try:
+        _segment_stock(stock_path, gap_up_threshold, volume_threshold)
+        print(f'Finished Segmenting {stock_path}')
+        update_state(update_finished_filepaths, stock_path)
+    except Exception as exc:
+        with open(EXCEPTION_OUTPUT_LOCATION, 'a') as f:
+            print('failed_to_segment_stock',
+                  dict(
+                      stock_path=stock_path,
+                      exception=exc,
+                  ),
+                  file=f
+                  )
+        return
 
 
 def update_finished_filepaths(state, stock_path):
@@ -149,10 +144,13 @@ def early_day_gap_parallel(
     args = []
 
     state_file_location = STATE_FILE_LOCATION
-    with open(state_file_location) as state_file:
-        state = json.load(state_file)
+    try:
+        with open(state_file_location) as state_file:
+            state = json.load(state_file)
+    except FileNotFoundError:
+        state = {}
 
-    stock_paths -= set(state[FINISHED_FILEPATHS_KEY])
+    stock_paths -= set(state.get(FINISHED_FILEPATHS_KEY, []))
 
     for stock_path in stock_paths:
         args.append(
