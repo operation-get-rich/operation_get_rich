@@ -37,7 +37,7 @@ TEST_MODE_ITERATION_LIMIT = 100
 
 
 def train(
-        trader_gru_model,  # type: SniperGRU
+        model,  # type: SniperGRU
         train_loader,  # type: DataLoader
         valid_loader,  # type: DataLoader
         batch_size=BATCH_SIZE,  # type: int
@@ -47,9 +47,9 @@ def train(
         learning_rate=0.0001  # type: float
 ):
     loss_function = torch.nn.BCELoss().to(device)
-    optimizer = torch.optim.RMSprop(trader_gru_model.parameters(), lr=learning_rate)
+    optimizer = torch.optim.RMSprop(model.parameters(), lr=learning_rate)
 
-    print('Model Structure: ', trader_gru_model)
+    print('Model Structure: ', model)
     print('Start Training ... ')
 
     cur_time = time.time()
@@ -85,7 +85,7 @@ def train(
             avg_f1_train
         ) = _train(
             train_loader,
-            trader_gru_model,
+            model,
             optimizer,
             loss_function,
             batch_size
@@ -102,7 +102,7 @@ def train(
             avg_f1_valid
         ) = _validate(
             valid_loader,
-            trader_gru_model,
+            model,
             loss_function,
             batch_size
         )
@@ -111,7 +111,7 @@ def train(
         avg_precisions_train.append(avg_precision_valid)
         avg_f1s_train.append(avg_f1_valid)
 
-        torch.save(trader_gru_model.state_dict(), args.save + "/latest_model.pt")
+        torch.save(model.state_dict(), args.save + "/latest_model.pt")
 
         # Early Stopping
         if epoch == 0:
@@ -123,25 +123,25 @@ def train(
                 is_least_error_model = 1
                 min_loss_epoch_valid = avg_loss_valid
                 patient_epoch = 0
-                torch.save(trader_gru_model.state_dict(), args.save + "/least_error_model.pt")
+                torch.save(model.state_dict(), args.save + "/least_error_model.pt")
 
             if avg_recall_valid > max_recall_valid:
                 is_max_recall_model = 1
                 max_recall_valid = avg_recall_valid
                 patient_epoch = 0
-                torch.save(trader_gru_model.state_dict(), args.save + "/max_recall_model.pt")
+                torch.save(model.state_dict(), args.save + "/max_recall_model.pt")
 
             if avg_precision_valid > max_precision_valid:
                 is_max_precision_model = 1
                 max_precision_valid = avg_precision_valid
                 patient_epoch = 0
-                torch.save(trader_gru_model.state_dict(), args.save + "/max_precision_model.pt")
+                torch.save(model.state_dict(), args.save + "/max_precision_model.pt")
 
             if avg_f1_valid > max_f1_valid:
                 is_max_f1_model = 1
                 max_f1_valid = avg_f1_valid
                 patient_epoch = 0
-                torch.save(trader_gru_model.state_dict(), args.save + "/max_f1_model.pt")
+                torch.save(model.state_dict(), args.save + "/max_f1_model.pt")
             else:
                 is_least_error_model = 0
                 is_max_recall_model = 0
@@ -253,7 +253,7 @@ def _train(train_loader, model, optimizer, loss_function, batch_size):
     )
 
 
-def _validate(valid_loader, trader_gru_model, loss_function, batch_size):
+def _validate(valid_loader, model, loss_function, batch_size):
     loss_sum = torch.tensor(0).float()
     recall_sum = torch.tensor(0).float()
     precision_sum = torch.tensor(0).float()
@@ -268,7 +268,7 @@ def _validate(valid_loader, trader_gru_model, loss_function, batch_size):
             continue
 
         normalized_features = Variable(features).to(device)
-        outputs = trader_gru_model(normalized_features, original_sequence_lengths)  # batch_size x 1
+        outputs = model(normalized_features, original_sequence_lengths)  # batch_size x 1
 
         loss = loss_function(outputs, labels)
         recall, precision, f1 = _get_evaluation_metric(outputs, labels)
