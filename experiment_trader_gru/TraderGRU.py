@@ -81,11 +81,11 @@ class TraderGRU(nn.Module):
             hidden_state = self.gru_cell(curr_in, hidden_state)  # shape: batch x hidden_size
 
             # Action mask to decide trade or not to trade
-            temperature = 0.05
             curr_out = self.output_layer(hidden_state)  # shape: batch x 1
             curr_out = torch.tanh(curr_out)
 
             if self.sparse:
+                temperature = 0.05
                 action_logit = self.action_layer(hidden_state)  # batch x 1
                 action = self.gumbel_softmax_sample(action_logit, temperature, hard=self.hard)
                 curr_out = curr_out * action
@@ -95,7 +95,7 @@ class TraderGRU(nn.Module):
         outputs = torch.stack(outputs).squeeze(-1)
         outputs = outputs.permute(1, 0)  # batch_size x seq_len
 
-        return outputs  # shape: sequence_length, batch_size
+        return outputs  # shape: batch_size x seq_len
 
     def init_hidden(self, batch_size):
         use_gpu = torch.cuda.is_available()
