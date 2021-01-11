@@ -1,22 +1,31 @@
 import signal
 import time
+from functools import wraps
 
 
-def retry_download(method, retry_count=2, timeout=30):
-    def time_out_handler(signum, frame):
-        raise TimeoutError("Process taken too long")
+# Created a custom Exception due to unexpected behavior when Ubuntu handle exception raised by Signal
+class RetryTimeoutError(Exception):
+    pass
 
-    def _retry_download(*args, **kwargs):
-        for _ in range(retry_count):
-            try:
-                signal.signal(signal.SIGALRM, time_out_handler)
-                signal.alarm(timeout)
-                return method(*args, **kwargs)
-            except Exception as exc:
-                print('Exception: ', exc)
-                pass
 
-    return _retry_download
+def retry_with_timeout(retry_count=2, timeout=30):
+    def decorator(method):
+        def time_out_handler(signum, frame):
+            raise RetryTimeoutError("Process taken too long")
+
+        def _retry_download(*args, **kwargs):
+            for _ in range(retry_count):
+                try:
+                    signal.signal(signal.SIGALRM, time_out_handler)
+                    signal.alarm(timeout)
+                    result = method(*args, **kwargs)
+                finally:
+                    signal.alarm(0)
+                return result
+
+        return wraps(method)(_retry_download)
+
+    return decorator
 
 
 def timeit(method):

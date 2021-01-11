@@ -8,7 +8,7 @@ __pycache__/config.cpython-36.pyc
 gaped_up_stocks/
 __pycache__/
 *.output
-!gaped_up_stocks_early_volume_1e5_gap_10_statistics.csv
+!statistics_gaped_up_stocks_early_volume_1e5_gap_10.csv
 
 early_day_gap_refactor_0.1_0/
 runs/
@@ -38,3 +38,4 @@ experiment_trader_gru/alpaca_paper_trade_logs/alpaca_paper_trade_2020-12-11.log
 datas/
 /experiment_trader_gru/alpaca_paper_trade_logs/
 /segmenters/early_day_gap_segmenter_parallel/early_day_gap_segmenter_parallel_console_output.txt
+operation_get_rich.egg-info/

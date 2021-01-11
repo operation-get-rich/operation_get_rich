@@ -7,12 +7,14 @@ import pandas as pd
 from dateutil.parser import parse
 
 from config import ALPACA_KEY_ID, ALPACA_SECRET_KEY, ALPACA_BASE_URL
-from utils import get_all_ticker_names, create_dir
+from directories import DATA_DIR
+from utils import get_all_ticker_names, create_dir, get_current_datetime, get_alpaca_time_str_format
 
-SAVE_PATH_DIR = '../datas/polygon_stock_prices'
+SAVE_PATH_DIR = f'{DATA_DIR}/polygon_stock_prices'
 START_DATE = '2019-01-01T03:00:00-05:00'
-END_DATE = '2020-11-11T15:00:00-05:00'
-COMPANY_STEPS = 10
+current_date_time = get_alpaca_time_str_format(get_current_datetime())
+END_DATE = current_date_time
+COMPANY_STEPS = 200
 
 create_dir(SAVE_PATH_DIR)
 
@@ -27,7 +29,7 @@ tickers = get_all_ticker_names()
 
 def main():
     date_tuples = _construct_date_tuples(START_DATE, END_DATE)
-    start = 3110
+    start = 0
     while start < len(tickers):
         end = min(len(tickers), start + COMPANY_STEPS)
 

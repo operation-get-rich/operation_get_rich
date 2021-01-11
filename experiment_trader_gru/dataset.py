@@ -16,7 +16,7 @@ STOCK_DATA_STD = 0.0
 TECHNICAL_INDICATOR_PERIOD = 14
 SEQUENCE_LENGTH = 390
 
-# From gaped_up_stocks_early_volume_1e5_gap_10_statistics.csv
+# From statistics_gaped_up_stocks_early_volume_1e5_gap_10.csv
 VOLUME_MEAN = 5236.079151848999
 VOLUME_STD = 17451.76183378195
 

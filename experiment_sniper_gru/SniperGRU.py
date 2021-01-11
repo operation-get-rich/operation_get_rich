@@ -1,65 +1,41 @@
+from typing import Union
+
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+from torch import Tensor
+from torch.nn.utils.rnn import PackedSequence
 
-from torch.autograd import Variable
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 class SniperGRU(nn.Module):
-    def __init__(self, input_size, hidden_size, hard=False):
+    def __init__(self, input_size, hidden_size, num_layers, num_classes=1):
         super(SniperGRU, self).__init__()
 
-        self.input_size = input_size  # 7 (open, close, low, high, volume, vwap, ema)
+        self.input_size = input_size  # 8 (open, close, low, high, volume, vwap, ema, rsi)
         self.hidden_size = hidden_size  # 35
+        self.num_layers = num_layers
+        self.num_classes = num_classes
 
-        use_gpu = torch.cuda.is_available()
-        if use_gpu:
-            self.identity = torch.eye(input_size).cuda()
-            self.zeros = Variable(torch.zeros(input_size).cuda())
-        else:
-            self.identity = torch.eye(input_size)
-            self.zeros = Variable(torch.zeros(input_size))
-
-        self.gru_cell = nn.GRUCell(
-            input_size=self.input_size,  # 7
-            hidden_size=self.hidden_size  # 35
-        )
-        self.output_layer = nn.Linear(
-            in_features=self.hidden_size,  # 35
-            out_features=1
-        )
+        self.gru = nn.GRU(self.input_size, self.hidden_size, self.num_layers, batch_first=True)
+        self.fc = nn.Linear(in_features=self.hidden_size, out_features=self.num_classes)
+        self.sigmoid = nn.Sigmoid()
 
     def forward(
             self,
-            input  # shape: batch_size, sequence_length, feature_length
+            input,  # type: Union[PackedSequence, Tensor]
     ):
-        batch_size = input.shape[0]
-        seq_length = input.shape[1]
-        feature_length = input.shape[2]
+        """
+        During training input is a `PackedSequence` instance.
+        PackedSequence will ensure the model only perform computation on non-padded data for each batch
 
-        hidden_state = self.init_hidden(batch_size)  # shape: batch_size x hidden_size
+        During evaluation input is a tensor with size of 1 x sequence_length x feature_length
+        """
 
-        outputs = []
-        for i in range(seq_length):
-            curr_in = torch.squeeze(input[:, i, :], dim=1)  # shape: batch x feature_length
-            hidden_state = self.gru_cell(curr_in, hidden_state)  # shape: batch x hidden_size
+        _, hidden = self.gru(input)
+        # hidden (the last `num_layers` layers of each batch): (num_layers, batch_size, hidden_size)
 
-            curr_out = self.output_layer(hidden_state)  # shape: batch x 1
+        fc_output = self.fc(hidden[-1])
+        sigmoid_output = self.sigmoid(fc_output).squeeze(-1)
 
-            outputs.append(curr_out)
-
-        outputs = torch.stack(outputs).squeeze(-1)
-        outputs = outputs.permute(1, 0)  # batch_size x seq_len
-
-        return outputs  # shape: sequence_length, batch_size
-
-    def init_hidden(self, batch_size):
-        use_gpu = torch.cuda.is_available()
-        if use_gpu:
-            hidden_state = Variable(torch.zeros(batch_size, self.hidden_size).cuda())  # shape: 10, 35
-            hidden_state = hidden_state.float()
-            return hidden_state  # shape: 10, 35
-        else:
-            hidden_state = Variable(torch.zeros(batch_size, self.hidden_size))  # shape: 10, 35
-            hidden_state = hidden_state.float()
-            return hidden_state  # shape: 10, 35
+        return sigmoid_output

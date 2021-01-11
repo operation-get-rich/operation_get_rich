@@ -7,6 +7,7 @@ import pytz
 import alpaca_trade_api as tradeapi
 
 from config import PAPER_ALPACA_API_KEY, PAPER_ALPACA_SECRET_KEY, PAPER_ALPACA_BASE_URL
+from directories import PROJECT_ROOT_DIR
 
 api = tradeapi.REST(
     key_id=PAPER_ALPACA_API_KEY,
@@ -26,7 +27,7 @@ Ticker related utils
 
 def get_all_ticker_names():
     ticker_names = []
-    ticker_names += _get_ticker_names('stock_tickers.txt')
+    ticker_names += _get_ticker_names(f'{PROJECT_ROOT_DIR}/stock_tickers.txt')
     return ticker_names
 
 
@@ -129,13 +130,14 @@ def update_state(state_file_location, update_func=None, *args, **kwargs):
     with open(state_file_location, 'w') as state_file:
         json.dump(state, state_file)
 
-def create_exp_dir(path, scripts_to_save=None):
-  if not os.path.exists(path):
-    os.mkdir(path)
-  print('Experiment dir : {}'.format(path))
 
-  if scripts_to_save is not None:
-    os.mkdir(os.path.join(path, 'scripts'))
-    for script in scripts_to_save:
-      dst_file = os.path.join(path, 'scripts', os.path.basename(script))
-      shutil.copyfile(script, dst_file)
+def create_exp_dir(path, scripts_to_save=None):
+    if not os.path.exists(path):
+        os.mkdir(path)
+    print('Experiment dir : {}'.format(path))
+
+    if scripts_to_save is not None:
+        os.mkdir(os.path.join(path, 'scripts'))
+        for script in scripts_to_save:
+            dst_file = os.path.join(path, 'scripts', os.path.basename(script))
+            shutil.copyfile(script, dst_file)
