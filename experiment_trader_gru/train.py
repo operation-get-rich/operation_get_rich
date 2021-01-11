@@ -28,7 +28,7 @@ parser.add_argument('--load', type=str, default='', help='experiment name')
 parser.add_argument('--save', type=str, default='Debug', help='experiment name')
 parser.add_argument('--next_trade', action='store_true')
 parser.add_argument('--multiply', action='store_true')
-parser.add_argument('--sparse', action='store_true')
+parser.add_argument('--sparse', default=True, action='store_true')
 
 args = parser.parse_args()
 
