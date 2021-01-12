@@ -156,10 +156,13 @@ def _train(train_loader, trader_gru_model, loss_function, optimizer, batch_size)
         if features.shape[0] != batch_size:
             continue
 
-        trades = get_trades_from_model(
+        trades, action_logit_sigmoids = get_trades_from_model(
             features=features,
             model=trader_gru_model
-        )  # shape: batch_size x sequence_length
+        )
+
+        trades  # shape: batch_size x sequence_length
+        action_logit_sigmoids  # shape: batch_size x 1
 
         open_prices = features[:, :, OPEN_COLUMN_INDEX]
 
@@ -242,7 +245,7 @@ def get_trades_from_model(
 
     trades = model(normalized_features)  # batch_size x sequence_length
 
-    return trades
+    return trades, model.action_logit_sigmoids
 
 
 if __name__ == "__main__":

@@ -36,6 +36,8 @@ class TraderGRU(nn.Module):
         self.hard = hard
         self.sparse = sparse
 
+        self.action_logit_sigmoids = []
+
     def sample_gumbel(self, shape, eps=1e-20):
         U = torch.rand(shape).cuda()
         return -Variable(torch.log(-torch.log(U + eps) + eps))
@@ -69,6 +71,8 @@ class TraderGRU(nn.Module):
             self,
             input  # shape: batch_size, sequence_length, feature_length
     ):
+        self.action_logit_sigmoids = []  # action_logit_sigmoids is being reset every forward run
+
         batch_size = input.shape[0]
         seq_length = input.shape[1]
         feature_length = input.shape[2]
@@ -76,6 +80,7 @@ class TraderGRU(nn.Module):
         hidden_state = self.init_hidden(batch_size)  # shape: batch_size x hidden_size
 
         outputs = []
+
         for i in range(seq_length):
             curr_in = torch.squeeze(input[:, i, :], dim=1)  # shape: batch x feature_length
             hidden_state = self.gru_cell(curr_in, hidden_state)  # shape: batch x hidden_size
@@ -87,10 +92,16 @@ class TraderGRU(nn.Module):
             if self.sparse:
                 temperature = 0.05
                 action_logit = self.action_layer(hidden_state)  # batch x 1
+                action_logit_sigmoid = F.sigmoid(action_logit)  # batch x 1
                 action = self.gumbel_softmax_sample(action_logit, temperature, hard=self.hard)
                 curr_out = curr_out * action
-
+                self.action_logit_sigmoids.append(action_logit_sigmoid)
             outputs.append(curr_out)
+
+        if self.action_logit_sigmoids:
+            self.action_logit_sigmoids = torch.stack(self.action_logit_sigmoids).squeeze(-1)
+            self.action_logit_sigmoids = self.action_logit_sigmoids.permute(1, 0)  # batch_size x seq_len¬
+            self.action_logit_sigmoids = self.action_logit_sigmoids.sum(axis=1)  # batch_size x 1
 
         outputs = torch.stack(outputs).squeeze(-1)
         outputs = outputs.permute(1, 0)  # batch_size x seq_len
