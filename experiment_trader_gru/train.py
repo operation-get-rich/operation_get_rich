@@ -29,6 +29,7 @@ parser.add_argument('--save', type=str, default='Debug', help='experiment name')
 parser.add_argument('--next_trade', action='store_true')
 parser.add_argument('--multiply', action='store_true')
 parser.add_argument('--sparse', default=True, action='store_true')
+parser.add_argument('--add_penalties', default=False, action='store_true')
 
 args = parser.parse_args()
 
@@ -126,7 +127,7 @@ def _validate(valid_loader, trader_gru_model, loss_function, batch_size):
         if features_val.shape[0] != batch_size:
             continue
 
-        trades = get_trades_from_model(
+        trades, action_penalties = get_trades_from_model(
             features=features_val,
             model=trader_gru_model
         )
@@ -136,9 +137,10 @@ def _validate(valid_loader, trader_gru_model, loss_function, batch_size):
             loss_function=loss_function,
             trades=trades,
             open_prices=open_prices,
+            action_penalties=action_penalties,
             original_sequence_lengths=original_sequence_lengths_val,
             is_premarket=is_premarket,
-            multiply=args.multiply
+            multiply=args.multiply,
         )
 
         if args.multiply:
@@ -156,13 +158,13 @@ def _train(train_loader, trader_gru_model, loss_function, optimizer, batch_size)
         if features.shape[0] != batch_size:
             continue
 
-        trades, action_logit_sigmoids = get_trades_from_model(
+        trades, action_penalties = get_trades_from_model(
             features=features,
             model=trader_gru_model
         )
 
         trades  # shape: batch_size x sequence_length
-        action_logit_sigmoids  # shape: batch_size x 1
+        action_penalties  # shape: batch_size x 1
 
         open_prices = features[:, :, OPEN_COLUMN_INDEX]
 
@@ -171,8 +173,9 @@ def _train(train_loader, trader_gru_model, loss_function, optimizer, batch_size)
             trades=trades,
             open_prices=open_prices,
             original_sequence_lengths=original_sequence_lengths,
+            action_penalties=action_penalties,
             is_premarket=is_premarket,
-            multiply=args.multiply
+            multiply=args.multiply,
         )
 
         trader_gru_model.zero_grad()
@@ -190,6 +193,7 @@ def compute_loss(
         trades,  # batch_size x seq_len
         open_prices,  # batch_size x seq_len
         original_sequence_lengths,  # batch_size
+        action_penalties,  # batch_size
         is_premarket=None,
         multiply=False
 ):
@@ -202,10 +206,12 @@ def compute_loss(
         current_outputs = trades[batch_index, 0: osl].float()
         current_prices = open_prices[batch_index, 0: osl].float()
         current_is_premarket = is_premarket[batch_index, 0: osl].float()
-        # TODO: What if at some day we lose 100% of our capital??
+        current_penalty = action_penalties[batch_index].float() if action_penalties else 0
+
         current_loss = loss_function(
             current_outputs,
             current_prices,
+            current_penalty,
             current_is_premarket,
             args.next_trade
         )
@@ -245,7 +251,7 @@ def get_trades_from_model(
 
     trades = model(normalized_features)  # batch_size x sequence_length
 
-    return trades, model.action_logit_sigmoids
+    return trades, model.action_penalties
 
 
 if __name__ == "__main__":
@@ -277,7 +283,7 @@ if __name__ == "__main__":
     model = TraderGRU(
         input_size=num_features,
         hidden_size=5 * num_features,
-        sparse=args.sparse
+        sparse=args.sparse,
     )
 
     # Create directories
