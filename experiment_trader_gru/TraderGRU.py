@@ -36,7 +36,7 @@ class TraderGRU(nn.Module):
         self.hard = hard
         self.sparse = sparse
 
-        self.action_logit_sigmoids = []
+        self.action_penalties = []
 
     def sample_gumbel(self, shape, eps=1e-20):
         U = torch.rand(shape).cuda()
@@ -71,7 +71,7 @@ class TraderGRU(nn.Module):
             self,
             input  # shape: batch_size, sequence_length, feature_length
     ):
-        self.action_logit_sigmoids = []  # action_logit_sigmoids is being reset every forward run
+        self.action_penalties = []  # action_logit_sigmoids is being reset every forward run
 
         batch_size = input.shape[0]
         seq_length = input.shape[1]
@@ -92,16 +92,16 @@ class TraderGRU(nn.Module):
             if self.sparse:
                 temperature = 0.05
                 action_logit = self.action_layer(hidden_state)  # batch x 1
-                action_logit_sigmoid = F.sigmoid(action_logit)  # batch x 1
+                action_penalty = F.sigmoid(action_logit)  # batch x 1
                 action = self.gumbel_softmax_sample(action_logit, temperature, hard=self.hard)
                 curr_out = curr_out * action
-                self.action_logit_sigmoids.append(action_logit_sigmoid)
+                self.action_penalties.append(action_penalty)
             outputs.append(curr_out)
 
-        if self.action_logit_sigmoids:
-            self.action_logit_sigmoids = torch.stack(self.action_logit_sigmoids).squeeze(-1)
-            self.action_logit_sigmoids = self.action_logit_sigmoids.permute(1, 0)  # batch_size x seq_len¬
-            self.action_logit_sigmoids = self.action_logit_sigmoids.sum(axis=1)  # batch_size x 1
+        if self.action_penalties:
+            self.action_penalties = torch.stack(self.action_penalties).squeeze(-1)
+            self.action_penalties = self.action_penalties.permute(1, 0)  # batch_size x seq_len¬
+            self.action_penalties = self.action_penalties.sum(axis=1)  # batch_size x 1
 
         outputs = torch.stack(outputs).squeeze(-1)
         outputs = outputs.permute(1, 0)  # batch_size x seq_len
@@ -120,7 +120,13 @@ class TraderGRU(nn.Module):
             return hidden_state  # shape: 10, 35
 
 
-def ProfitLoss(trade_sequence, market_sequence, is_premarket=None, next_trade=False):
+def ProfitLoss(
+        trade_sequence,
+        market_sequence,
+        penalty,
+        is_premarket=None,
+        next_trade=False
+):
     if next_trade:
         trade_sequence = trade_sequence[:-1]
         market_sequence = market_sequence[1:]
@@ -150,7 +156,7 @@ def ProfitLoss(trade_sequence, market_sequence, is_premarket=None, next_trade=Fa
     capital = capital + (shares * final_price)
 
     # Return negative reward
-    return -(capital - 1)
+    return -(capital - 1) + penalty
 
 
 def load_trader_gru_model(model_location):
