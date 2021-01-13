@@ -11,7 +11,9 @@ from torch.utils.data import DataLoader
 from directories import DATA_DIR
 from experiment_trader_gru.TraderGRU import TraderGRU, ProfitLoss
 from experiment_trader_gru.dataset import TraderGRUDataSet, OPEN_COLUMN_INDEX
+from experiment_trader_gru.experiment_trader_gru_directories import EXPERIMENT_ROOT_DIR
 from experiment_trader_gru.normalizer import PercentChangeNormalizer
+
 
 import multiprocessing
 
@@ -28,7 +30,7 @@ parser.add_argument('--load', type=str, default='', help='experiment name')
 parser.add_argument('--save', type=str, default='Debug', help='experiment name')
 parser.add_argument('--next_trade', action='store_true')
 parser.add_argument('--multiply', action='store_true')
-parser.add_argument('--sparse', action='store_true')
+parser.add_argument('--sparse', default=True, action='store_true')
 
 args = parser.parse_args()
 
@@ -252,13 +254,13 @@ if __name__ == "__main__":
         torch.cuda.set_device(args.gpu)
 
     train_data = TraderGRUDataSet(
-        data_folder=F'{DATA_DIR}/alpaca_gaped_up_stocks_early_volume_1e5_gap_10',
+        data_folder=F'{DATA_DIR}/polygon_early_day_gap_segmenter_parallel',
         split='train',
         should_add_technical_indicator=True
     )
 
     test_data = TraderGRUDataSet(
-        data_folder=f'{DATA_DIR}/alpaca_gaped_up_stocks_early_volume_1e5_gap_10',
+        data_folder=f'{DATA_DIR}/polygon_early_day_gap_segmenter_parallel',
         split='valid',
         should_add_technical_indicator=True
     )
@@ -284,7 +286,7 @@ if __name__ == "__main__":
                                          map_location=lambda storage, loc: storage))
 
     args.save = '{}-{}'.format(args.save, time.strftime("%Y%m%d-%H%M%S"))
-    args.save = os.path.join('runs', args.save)
+    args.save = os.path.join(f'{EXPERIMENT_ROOT_DIR}/runs', args.save)
     create_dir(args.save)
 
     if torch.cuda.is_available():
