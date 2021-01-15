@@ -28,7 +28,6 @@ parser = argparse.ArgumentParser(description='TraderGRU Train')
 parser.add_argument('--gpu', type=int, default=0, help='gpu device id')
 parser.add_argument('--load', type=str, default='', help='experiment name')
 parser.add_argument('--save', type=str, default='Debug', help='experiment name')
-parser.add_argument('--next_trade', action='store_true')
 parser.add_argument('--multiply', action='store_true')
 parser.add_argument('--sparse', default=True, action='store_true')
 
@@ -206,7 +205,6 @@ def compute_loss(
             current_outputs,
             current_prices,
             current_is_premarket,
-            args.next_trade
         )
         losses.append(current_loss)
         num_sequences += 1
