@@ -104,6 +104,7 @@ class TraderGRU(nn.Module):
         if add_penalties:
             self.action_penalties = torch.stack(self.action_penalties).squeeze(-1)
             self.action_penalties = self.action_penalties.permute(1, 0)  # batch_size x seq_len¬
+            # summing over the time step
             self.action_penalties = self.action_penalties.sum(axis=1)  # batch_size x 1
 
         outputs = torch.stack(outputs).squeeze(-1)
@@ -126,7 +127,6 @@ class TraderGRU(nn.Module):
 def ProfitLoss(
         trade_sequence,
         market_sequence,
-        penalty,
         is_premarket=None,
 ):
     trade_sequence = trade_sequence[:-1]
@@ -157,7 +157,7 @@ def ProfitLoss(
     capital = capital + (shares * final_price)
 
     # Return negative reward
-    return -(capital - 1) + penalty
+    return -(capital - 1)
 
 
 def load_trader_gru_model(model_location):
