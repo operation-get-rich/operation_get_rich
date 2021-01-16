@@ -1,9 +1,15 @@
+import argparse
 import json
 import os
 
 import pandas as pd
 
 from directories import DATA_DIR
+
+parser = argparse.ArgumentParser(description='Dataset Stats Calculator')
+
+parser.add_argument('--dataset-name', required=True, type=str)
+args = parser.parse_args()
 
 
 def company_segment_organized_parser(root_data_dir):
@@ -36,6 +42,7 @@ dataset_name_to_parser = {
     'gaped_up_stocks_early_volume_1e5_gap_10': company_segment_organized_parser,
     'polygon_early_day_gap_segmenter_parallel': date_segment_organized_parser,
     'sniper_training_data_3': segment_organized_parser,
+    'sniper_training_data_balanced_1': segment_organized_parser,
 }
 
 
@@ -64,4 +71,4 @@ def compute_stats(dataset_name):
         json.dump(statistics_dataset, f)
 
 
-compute_stats('sniper_training_data_3')
+compute_stats(args.dataset_name)
