@@ -291,12 +291,12 @@ if __name__ == "__main__":
 
     # Create directories
     if args.load:
-        model_path = os.path.join(EXPERIMENT_ROOT_DIR,'runs', args.load, 'best_model.pt')
+        model_path = os.path.join(EXPERIMENT_ROOT_DIR, 'runs', args.load, 'best_model.pt')
         model.load_state_dict(torch.load(model_path,
                                          map_location=lambda storage, loc: storage))
 
     args.save = '{}-{}'.format(args.save, time.strftime("%Y%m%d-%H%M%S"))
-    args.save = os.path.join('runs', args.save)
+    args.save = os.path.join(EXPERIMENT_ROOT_DIR, 'runs', args.save)
     create_dir(args.save)
 
     if torch.cuda.is_available():
