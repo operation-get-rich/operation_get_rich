@@ -53,9 +53,6 @@ def train(
     print('Model Structure: ', trader_gru_model)
     print('Start Training ... ')
 
-    average_epoch_losses_train = []
-    average_epoch_losses_valid = []
-
     cur_time = time.time()
     pre_time = time.time()
 
@@ -64,7 +61,7 @@ def train(
     patient_epoch = 0
     min_loss_epoch_valid = 10000.0
     for epoch in range(num_epochs):
-        losses_epoch_train = _train(
+        losses_epoch_train, losess_without_penalty_train = _train(
             train_loader,
             trader_gru_model,
             loss_function,
@@ -72,7 +69,7 @@ def train(
             batch_size
         )
 
-        losses_epoch_valid = _validate(
+        losses_epoch_valid, losess_without_penalty_valid = _validate(
             valid_loader,
             trader_gru_model,
             loss_function,
@@ -81,12 +78,13 @@ def train(
 
         torch.save(trader_gru_model.state_dict(), args.save + "/latest_model.pt")
 
-        # TODO: Average is not a good indicator. What if at one
-
         avg_losses_epoch_train = sum(losses_epoch_train).cpu().detach().numpy() / float(len(losses_epoch_train))
         avg_losses_epoch_valid = sum(losses_epoch_valid).cpu().detach().numpy() / float(len(losses_epoch_valid))
-        average_epoch_losses_train.append(avg_losses_epoch_train)
-        average_epoch_losses_valid.append(avg_losses_epoch_valid)
+
+        avg_losses_epoch_train_without_penalty = sum(losess_without_penalty_train).cpu().detach().numpy() / float(
+            len(losess_without_penalty_train))
+        avg_losses_epoch_valid_without_penalty = sum(losess_without_penalty_valid).cpu().detach().numpy() / float(
+            len(losess_without_penalty_valid))
 
         # Early Stopping
         if epoch == 0:
@@ -119,11 +117,16 @@ def train(
                 np.around([cur_time - pre_time], decimals=2),
                 is_best_model)
         )
+
+        if args.add_penalties:
+            print(f'train_loss_without_penalty: {avg_losses_epoch_train_without_penalty}, '
+                  f'valid_loss_without_penalty: {avg_losses_epoch_valid_without_penalty}')
         pre_time = cur_time
 
 
 def _validate(valid_loader, trader_gru_model, loss_function, batch_size):
     losses_epoch_valid = []
+    losses_epoch_valid_without_penalty = []
     for features_val, original_sequence_lengths_val, is_premarket in valid_loader:
         if features_val.shape[0] != batch_size:
             continue
@@ -134,7 +137,7 @@ def _validate(valid_loader, trader_gru_model, loss_function, batch_size):
         )
 
         open_prices = features_val[:, :, 0]
-        loss_val = compute_loss(
+        loss_val, loss_valid_without_penalty = compute_loss(
             loss_function=loss_function,
             trades=trades,
             open_prices=open_prices,
@@ -147,11 +150,13 @@ def _validate(valid_loader, trader_gru_model, loss_function, batch_size):
         if args.multiply:
             loss_val = -(torch.exp(-loss_val) - 1)
         losses_epoch_valid.append(loss_val)
-    return losses_epoch_valid
+        losses_epoch_valid_without_penalty.append(loss_valid_without_penalty)
+    return losses_epoch_valid, losses_epoch_valid_without_penalty
 
 
 def _train(train_loader, trader_gru_model, loss_function, optimizer, batch_size):
     losses_epoch_train = []
+    losses_epoch_train_without_penalty = []
     for features, original_sequence_lengths, is_premarket in train_loader:
         features  # shape: batch_size x sequence_length x feature_length
         original_sequence_lengths  # shape: batch_size
@@ -169,7 +174,7 @@ def _train(train_loader, trader_gru_model, loss_function, optimizer, batch_size)
 
         open_prices = features[:, :, OPEN_COLUMN_INDEX]
 
-        loss_train = compute_loss(
+        loss_train, loss_train_without_penalty = compute_loss(
             loss_function=loss_function,
             trades=trades,
             open_prices=open_prices,
@@ -186,7 +191,8 @@ def _train(train_loader, trader_gru_model, loss_function, optimizer, batch_size)
         if args.multiply:
             loss_train = -(torch.exp(-loss_train) - 1)
         losses_epoch_train.append(loss_train)
-    return losses_epoch_train
+        losses_epoch_train_without_penalty.append(loss_train_without_penalty)
+    return losses_epoch_train, losses_epoch_train_without_penalty
 
 
 def compute_loss(
@@ -198,40 +204,67 @@ def compute_loss(
         is_premarket=None,
         multiply=False
 ):
+    """
+    Return a tuple:
+        - First index is the loss with penalty
+        - Second index is the loss without penalty. Used mostly for logging purposes
+    """
     num_sequences = 0
     losses = []
+    losses_without_penalty = []  # mostly used for logging
     for batch_index, osl in enumerate(original_sequence_lengths):
         # BUG: Sometimes osl is 0
         if osl <= 1:
             continue
 
-        current_outputs = trades[batch_index, 0: osl].float()
-        current_prices = open_prices[batch_index, 0: osl].float()
-        current_is_premarket = is_premarket[batch_index, 0: osl].float()
+        current_batch_trades = trades[batch_index, 0: osl].float()
+        current_batch_prices = open_prices[batch_index, 0: osl].float()
+        current_batch_is_premarket = is_premarket[batch_index, 0: osl].float()
 
-        current_batch_penalty = action_penalties[batch_index].float() if args.add_penalties else 0
+        if args.add_penalties:
+            current_batch_penalty = action_penalties[batch_index].float()
+        else:
+            current_batch_penalty = 0
 
-        current_loss = loss_function(
-            current_outputs,
-            current_prices,
+        current_batch_loss = loss_function(
+            current_batch_trades,
+            current_batch_prices,
             current_batch_penalty,
-            current_is_premarket,
+            current_batch_is_premarket,
         )
-        losses.append(current_loss)
+
+        losses.append(current_batch_loss + current_batch_penalty)
+        losses_without_penalty.append(current_batch_loss)
         num_sequences += 1
+
     if multiply:
-        eps = 1e-15
-        logsum = 0
-        for loss in losses:
-            change = -loss + 1  # change is in range [0, inf]
-            log_change = torch.log(change + eps)
-            logsum += log_change
-        total_loss = -logsum
+        total_loss = _reduce_loss_multiply(losses)
+        total_loss_without_penalty = _reduce_loss_multiply(losses)
     else:
-        total_loss = 0
-        for loss in losses:
-            total_loss += loss
-        total_loss /= float(num_sequences)
+        total_loss = _average_loss(losses, num_sequences)
+        total_loss_without_penalty = _average_loss(losses_without_penalty, num_sequences)
+    return total_loss, total_loss_without_penalty
+
+
+def _average_loss(losses, num_sequences):
+    total_loss = 0
+    for loss in losses:
+        total_loss += loss
+    total_loss /= float(num_sequences)
+    return total_loss
+
+
+def _reduce_loss_multiply(losses):
+    """
+    if args.multiply is True, this function will be called to reduce the losses from the sample in the batch
+    """
+    eps = 1e-15
+    logsum = 0
+    for loss in losses:
+        change = -loss + 1  # change is in range [0, inf]
+        log_change = torch.log(change + eps)
+        logsum += log_change
+    total_loss = -logsum
     return total_loss
 
 
