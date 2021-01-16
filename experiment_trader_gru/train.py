@@ -29,7 +29,7 @@ parser.add_argument('--load', type=str, default='', help='experiment name')
 parser.add_argument('--save', type=str, default='Debug', help='experiment name')
 parser.add_argument('--multiply', action='store_true')
 parser.add_argument('--sparse', default=True, action='store_true')
-parser.add_argument('--add_penalties', default=False, action='store_true')
+parser.add_argument('--add-penalties', default=False, action='store_true')
 parser.add_argument('--dataset-name', default='polygon_early_day_gap_segmenter_parallel', type=str)
 
 args = parser.parse_args()
@@ -229,7 +229,6 @@ def compute_loss(
         current_batch_loss = loss_function(
             current_batch_trades,
             current_batch_prices,
-            current_batch_penalty,
             current_batch_is_premarket,
         )
 
