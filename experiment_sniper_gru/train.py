@@ -26,6 +26,7 @@ parser = argparse.ArgumentParser(description='TraderGRU Train')
 # General Settings
 parser.add_argument('--gpu', type=int, default=0, help='gpu device id')
 parser.add_argument('--save', type=str, default='Train', help='experiment name')
+parser.add_argument('--dataset-name', required=True, type=str)
 args = parser.parse_args()
 
 BATCH_SIZE = 10
@@ -331,14 +332,15 @@ if __name__ == "__main__":
     if torch.cuda.is_available():
         torch.cuda.set_device(args.gpu)
 
+    dataset_name = args.dataset_name
     train_data = SniperDataset(
         split='train',
-        dataset_name=f'sniper_training_data_3',
+        dataset_name=dataset_name,
     )
 
     test_data = SniperDataset(
         split='test',
-        dataset_name=f'sniper_training_data_3'
+        dataset_name=dataset_name
     )
 
     train_loader = DataLoader(train_data, num_workers=1, shuffle=True, batch_size=BATCH_SIZE)
