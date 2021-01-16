@@ -128,11 +128,9 @@ def ProfitLoss(
         market_sequence,
         penalty,
         is_premarket=None,
-        next_trade=False
 ):
-    if next_trade:
-        trade_sequence = trade_sequence[:-1]
-        market_sequence = market_sequence[1:]
+    trade_sequence = trade_sequence[:-1]
+    market_sequence = market_sequence[1:]
 
     assert trade_sequence.shape[0] == market_sequence.shape[0]
 
