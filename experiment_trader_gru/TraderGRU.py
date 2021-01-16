@@ -69,7 +69,8 @@ class TraderGRU(nn.Module):
 
     def forward(
             self,
-            input  # shape: batch_size, sequence_length, feature_length
+            input,  # shape: batch_size, sequence_length, feature_length
+            add_penalties=False,
     ):
         self.action_penalties = []  # action_logit_sigmoids is being reset every forward run
 
@@ -92,13 +93,15 @@ class TraderGRU(nn.Module):
             if self.sparse:
                 temperature = 0.05
                 action_logit = self.action_layer(hidden_state)  # batch x 1
-                action_penalty = F.sigmoid(action_logit)  # batch x 1
                 action = self.gumbel_softmax_sample(action_logit, temperature, hard=self.hard)
                 curr_out = curr_out * action
-                self.action_penalties.append(action_penalty)
+
+                if add_penalties:
+                    action_penalty = F.sigmoid(action_logit)  # batch x 1
+                    self.action_penalties.append(action_penalty)
             outputs.append(curr_out)
 
-        if self.action_penalties:
+        if add_penalties:
             self.action_penalties = torch.stack(self.action_penalties).squeeze(-1)
             self.action_penalties = self.action_penalties.permute(1, 0)  # batch_size x seq_len¬
             self.action_penalties = self.action_penalties.sum(axis=1)  # batch_size x 1

@@ -203,10 +203,12 @@ def compute_loss(
         # BUG: Sometimes osl is 0
         if osl <= 1:
             continue
+
         current_outputs = trades[batch_index, 0: osl].float()
         current_prices = open_prices[batch_index, 0: osl].float()
         current_is_premarket = is_premarket[batch_index, 0: osl].float()
-        current_penalty = action_penalties[batch_index].float() if action_penalties else 0
+
+        current_penalty = action_penalties[batch_index].float() if args.action_penalties else 0
 
         current_loss = loss_function(
             current_outputs,
@@ -235,7 +237,7 @@ def compute_loss(
 
 def get_trades_from_model(
         features,  # size: batch_size x sequence_length x feature_length
-        model  # type: TraderGRU
+        model,  # type: TraderGRU
 ):
     use_gpu = torch.cuda.is_available()
     features = features.float()
@@ -249,8 +251,9 @@ def get_trades_from_model(
     else:
         normalized_features = Variable(normalized_features)
 
-    trades = model(normalized_features)  # batch_size x sequence_length
+    trades = model(normalized_features, args.add_penalties)  # batch_size x sequence_length
 
+    # Note: if args.add_penalties is False, model.action_penalties is empty
     return trades, model.action_penalties
 
 
