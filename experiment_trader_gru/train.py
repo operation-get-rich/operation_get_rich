@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader
 from directories import DATA_DIR
 from experiment_trader_gru.TraderGRU import TraderGRU, ProfitLoss
 from experiment_trader_gru.dataset import TraderGRUDataSet, OPEN_COLUMN_INDEX
+from experiment_trader_gru.experiment_trader_gru_directories import EXPERIMENT_ROOT_DIR
 from experiment_trader_gru.normalizer import PercentChangeNormalizer
 
 import multiprocessing
@@ -26,10 +27,10 @@ parser = argparse.ArgumentParser(description='TraderGRU Train')
 parser.add_argument('--gpu', type=int, default=0, help='gpu device id')
 parser.add_argument('--load', type=str, default='', help='experiment name')
 parser.add_argument('--save', type=str, default='Debug', help='experiment name')
-parser.add_argument('--next_trade', action='store_true')
 parser.add_argument('--multiply', action='store_true')
 parser.add_argument('--sparse', default=True, action='store_true')
 parser.add_argument('--add_penalties', default=False, action='store_true')
+parser.add_argument('--dataset-name', default='polygon_early_day_gap_segmenter_parallel', type=str)
 
 args = parser.parse_args()
 
@@ -208,14 +209,13 @@ def compute_loss(
         current_prices = open_prices[batch_index, 0: osl].float()
         current_is_premarket = is_premarket[batch_index, 0: osl].float()
 
-        current_batch_penalty = action_penalties[batch_index].float() if args.action_penalties else 0
+        current_batch_penalty = action_penalties[batch_index].float() if args.add_penalties else 0
 
         current_loss = loss_function(
             current_outputs,
             current_prices,
             current_batch_penalty,
             current_is_premarket,
-            args.next_trade
         )
         losses.append(current_loss)
         num_sequences += 1
@@ -264,13 +264,13 @@ if __name__ == "__main__":
         torch.cuda.set_device(args.gpu)
 
     train_data = TraderGRUDataSet(
-        data_folder=F'{DATA_DIR}/alpaca_gaped_up_stocks_early_volume_1e5_gap_10',
+        data_folder=F'{DATA_DIR}/{args.dataset_name}',
         split='train',
         should_add_technical_indicator=True
     )
 
     test_data = TraderGRUDataSet(
-        data_folder=f'{DATA_DIR}/alpaca_gaped_up_stocks_early_volume_1e5_gap_10',
+        data_folder=F'{DATA_DIR}/{args.dataset_name}',
         split='valid',
         should_add_technical_indicator=True
     )
@@ -291,7 +291,7 @@ if __name__ == "__main__":
 
     # Create directories
     if args.load:
-        model_path = os.path.join('runs', args.load, 'best_model.pt')
+        model_path = os.path.join(EXPERIMENT_ROOT_DIR,'runs', args.load, 'best_model.pt')
         model.load_state_dict(torch.load(model_path,
                                          map_location=lambda storage, loc: storage))
 
