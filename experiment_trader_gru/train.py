@@ -208,12 +208,12 @@ def compute_loss(
         current_prices = open_prices[batch_index, 0: osl].float()
         current_is_premarket = is_premarket[batch_index, 0: osl].float()
 
-        current_penalty = action_penalties[batch_index].float() if args.action_penalties else 0
+        current_batch_penalty = action_penalties[batch_index].float() if args.action_penalties else 0
 
         current_loss = loss_function(
             current_outputs,
             current_prices,
-            current_penalty,
+            current_batch_penalty,
             current_is_premarket,
             args.next_trade
         )
