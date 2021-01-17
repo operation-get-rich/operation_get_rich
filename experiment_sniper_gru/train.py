@@ -29,13 +29,13 @@ parser.add_argument('--save', type=str, default='Train', help='experiment name')
 parser.add_argument('--dataset-name', required=True, type=str)
 args = parser.parse_args()
 
-BATCH_SIZE = 10
+BATCH_SIZE = 100
 
 # check whether cuda is available
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 IS_TEST_MODE = False
-TEST_MODE_ITERATION_LIMIT = 100
+TEST_MODE_ITERATION_LIMIT = 10
 
 
 def train(
@@ -218,7 +218,6 @@ def _train(train_loader, model, optimizer, loss_function, batch_size):
     test_mode_index = 0  # used just for confirming training are running properly
 
     for features, labels, original_sequence_lengths in train_loader:
-
         features = features.float().to(device)  # shape: batch_size x sequence_length x feature_length
         labels = labels.float().to(device)  # shape: batch_size
         original_sequence_lengths = original_sequence_lengths.to(device)  # shape: batch_size
@@ -226,18 +225,7 @@ def _train(train_loader, model, optimizer, loss_function, batch_size):
         if features.shape[0] != batch_size:
             continue
 
-        features = Variable(features).to(device)
-
-        """
-        `pack_padded_sequence` returns a PackedSequence instance that helps the rnn to 
-        compute only on unpadded data
-        """
-        input = torch.nn.utils.rnn.pack_padded_sequence(
-            features,
-            original_sequence_lengths,
-            enforce_sorted=False,
-            batch_first=True)  # type: PackedSequence
-        outputs = model(input)  # batch_size x 1
+        outputs = _get_predictions_from_model(model, features, original_sequence_lengths)
 
         loss = loss_function(outputs, labels)
         recall, precision, f1 = _get_evaluation_metric(outputs, labels)
@@ -279,8 +267,7 @@ def _validate(valid_loader, model, loss_function, batch_size):
         if features.shape[0] != batch_size:
             continue
 
-        normalized_features = Variable(features).to(device)
-        outputs = model(normalized_features, original_sequence_lengths)  # batch_size x 1
+        outputs = _get_predictions_from_model(model, features, original_sequence_lengths)
 
         loss = loss_function(outputs, labels)
         recall, precision, f1 = _get_evaluation_metric(outputs, labels)
@@ -302,6 +289,21 @@ def _validate(valid_loader, model, loss_function, batch_size):
     )
 
 
+def _get_predictions_from_model(model, features, original_sequence_lengths):
+    features = Variable(features).to(device)
+    """
+        `pack_padded_sequence` returns a PackedSequence instance that helps the rnn to 
+        compute only on unpadded data
+        """
+    input = torch.nn.utils.rnn.pack_padded_sequence(
+        features,
+        original_sequence_lengths,
+        enforce_sorted=False,
+        batch_first=True)  # type: PackedSequence
+    outputs = model(input)  # batch_size x 1
+    return outputs
+
+
 def _get_evaluation_metric(
         outputs,  # batch_size x 1
         y,  # batch_size x 1
@@ -310,7 +312,7 @@ def _get_evaluation_metric(
     rounded_preds = torch.where(outputs > 0.5, 1, 0)  # if output > 0.8 outputs 1 else 0
 
     recall = recall_score(y_true=y, y_pred=rounded_preds)
-    precision = precision_score(y_true=y, y_pred=rounded_preds)
+    precision = precision_score(y_true=y, y_pred=rounded_preds, zero_division=0)
     f1 = f1_score(y_true=y, y_pred=rounded_preds)
 
     return recall, precision, f1
