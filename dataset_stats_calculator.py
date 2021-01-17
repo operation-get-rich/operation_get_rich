@@ -121,8 +121,6 @@ def compute_stats(dataset_name):
     entire_segments_descriptive_stats = dataset_name_to_parser[dataset_name](
         root_dir)  # parsing the directory to get the statistics of the dataset
 
-    # TODO: Figure out how to parse the new structure
-
     stats_dict = {}
     for key in entire_segments_descriptive_stats.keys():
         if key not in stats_dict:
