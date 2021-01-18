@@ -1,6 +1,7 @@
 import json
 import os
 import random
+import time
 
 import numpy as np
 import pandas
@@ -36,6 +37,8 @@ class SniperDataset(torch.utils.data.Dataset):
 
         random.seed(69420)
         random.shuffle(self.segment_list)
+
+        assert split in {'train', 'valid'}
 
         train_proportion_split = .90
         if split == 'train':
