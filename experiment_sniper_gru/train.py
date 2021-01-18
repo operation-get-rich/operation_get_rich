@@ -210,10 +210,7 @@ def train(
 
 
 def _train(train_loader, model, optimizer, loss_function, batch_size):
-    loss_sum = torch.tensor(0).float().to(device)
-    recall_sum = torch.tensor(0).float()
-    precision_sum = torch.tensor(0).float()
-    f1_sum = torch.tensor(0).float()
+    f1_sum, loss_sum, precision_sum, recall_sum = instantiate_metric_variables()
 
     test_mode_index = 0  # used just for confirming training are running properly
 
@@ -255,10 +252,8 @@ def _train(train_loader, model, optimizer, loss_function, batch_size):
 
 
 def _validate(valid_loader, model, loss_function, batch_size):
-    loss_sum = torch.tensor(0).float()
-    recall_sum = torch.tensor(0).float()
-    precision_sum = torch.tensor(0).float()
-    f1_sum = torch.tensor(0).float()
+    f1_sum, loss_sum, precision_sum, recall_sum = instantiate_metric_variables()
+
     test_mode_index = 0
     for features, labels, original_sequence_lengths in valid_loader:
         features = features.float()  # shape: batch_size x sequence_length x feature_length
@@ -288,6 +283,14 @@ def _validate(valid_loader, model, loss_function, batch_size):
         precision_sum.detach().numpy() / len(train_loader),
         f1_sum.detach().numpy() / len(train_loader)
     )
+
+
+def instantiate_metric_variables():
+    loss_sum = torch.tensor(0).float().to(device)
+    recall_sum = torch.tensor(0).float().to(device)
+    precision_sum = torch.tensor(0).float().to(device)
+    f1_sum = torch.tensor(0).float().to(device)
+    return f1_sum, loss_sum, precision_sum, recall_sum
 
 
 def _get_predictions_from_model(model, features, original_sequence_lengths):
