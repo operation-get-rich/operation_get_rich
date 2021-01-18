@@ -215,7 +215,10 @@ def _train(train_loader, model, optimizer, loss_function, batch_size):
     loss_sum, precision_sum, recall_sum, f1_sum = instantiate_metric_variables()
     test_mode_index = 0  # used just for confirming training are running properly
 
-    for features, labels, original_sequence_lengths in train_loader:
+    for i, loaded_data in enumerate(train_loader):
+        a = time.time()
+        features, labels, original_sequence_lengths = loaded_data
+
         features = features.float()  # shape: batch_size x sequence_length x feature_length
         original_sequence_lengths  # shape: batch_size
 
@@ -244,6 +247,9 @@ def _train(train_loader, model, optimizer, loss_function, batch_size):
             test_mode_index += 1
             if test_mode_index == TEST_MODE_ITERATION_LIMIT:
                 break
+        b = time.time()
+        loop_time_taken = np.around(b - a, decimals=2)
+        print(f'{i}th loop, time taken: {loop_time_taken}s')
     return (
         loss_sum.cpu().detach().numpy() / len(train_loader),
         recall_sum.cpu().detach().numpy() / len(train_loader),
@@ -257,7 +263,10 @@ def _validate(valid_loader, model, loss_function, batch_size):
     print("\n=== Validation ===\n")
     loss_sum, precision_sum, recall_sum, f1_sum = instantiate_metric_variables()
     test_mode_index = 0  # used just for confirming training are running properly
-    for features, labels, original_sequence_lengths in valid_loader:
+    for i, loaded_data in valid_loader:
+        a = time.time()
+        features, labels, original_sequence_lengths = loaded_data
+
         features = features.float()  # shape: batch_size x sequence_length x feature_length
         original_sequence_lengths  # shape: batch_size
 
@@ -279,6 +288,9 @@ def _validate(valid_loader, model, loss_function, batch_size):
             test_mode_index += 1
             if test_mode_index == TEST_MODE_ITERATION_LIMIT:
                 break
+        b = time.time()
+        loop_time_taken = np.around(b - a, decimals=2)
+        print(f'{i}th loop, time taken: {loop_time_taken}s')
     return (
         loss_sum.cpu().detach().numpy() / len(train_loader),
         recall_sum.cpu().detach().numpy() / len(train_loader),
