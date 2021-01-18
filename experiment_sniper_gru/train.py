@@ -210,7 +210,7 @@ def train(
 
 
 def _train(train_loader, model, optimizer, loss_function, batch_size):
-    loss_sum = torch.tensor(0).float()
+    loss_sum = torch.tensor(0).float().to(device)
     recall_sum = torch.tensor(0).float()
     precision_sum = torch.tensor(0).float()
     f1_sum = torch.tensor(0).float()
@@ -218,27 +218,28 @@ def _train(train_loader, model, optimizer, loss_function, batch_size):
     test_mode_index = 0  # used just for confirming training are running properly
 
     for features, labels, original_sequence_lengths in train_loader:
-        features = features.float().to(device)  # shape: batch_size x sequence_length x feature_length
-        labels = labels.float().to(device)  # shape: batch_size
-        original_sequence_lengths = original_sequence_lengths.to(device)  # shape: batch_size
+        features = features.float()  # shape: batch_size x sequence_length x feature_length
+        original_sequence_lengths  # shape: batch_size
 
         if features.shape[0] != batch_size:
             continue
 
         outputs = _get_predictions_from_model(model, features, original_sequence_lengths)
 
+        labels = labels.float().to(device)  # shape: batch_size
         loss = loss_function(outputs, labels)
+
+        model.zero_grad()
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
         recall, precision, f1 = _get_evaluation_metric(outputs, labels)
 
         loss_sum += loss
         recall_sum += recall
         precision_sum += precision
         f1_sum += f1
-
-        model.zero_grad()
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
 
         if IS_TEST_MODE:
             print(f'iteration {test_mode_index}')
@@ -260,9 +261,9 @@ def _validate(valid_loader, model, loss_function, batch_size):
     f1_sum = torch.tensor(0).float()
     test_mode_index = 0
     for features, labels, original_sequence_lengths in valid_loader:
-        features = features.float().to(device)  # shape: batch_size x sequence_length x feature_length
-        labels = labels.float().to(device)  # shape: batch_size
-        original_sequence_lengths = original_sequence_lengths.to(device)  # shape: batch_size
+        features = features.float()  # shape: batch_size x sequence_length x feature_length
+        labels = labels.float()  # shape: batch_size
+        original_sequence_lengths = original_sequence_lengths  # shape: batch_size
 
         if features.shape[0] != batch_size:
             continue
@@ -290,7 +291,7 @@ def _validate(valid_loader, model, loss_function, batch_size):
 
 
 def _get_predictions_from_model(model, features, original_sequence_lengths):
-    features = Variable(features).to(device)
+    features = Variable(features)
     """
         `pack_padded_sequence` returns a PackedSequence instance that helps the rnn to 
         compute only on unpadded data
@@ -299,21 +300,32 @@ def _get_predictions_from_model(model, features, original_sequence_lengths):
         features,
         original_sequence_lengths,
         enforce_sorted=False,
-        batch_first=True)  # type: PackedSequence
+        batch_first=True).to(device)  # type: PackedSequence
     outputs = model(input)  # batch_size x 1
     return outputs
 
 
 def _get_evaluation_metric(
         outputs,  # batch_size x 1
-        y,  # batch_size x 1
+        labels,  # batch_size x 1
 ):
-    # round predictions to the closest integer
     rounded_preds = torch.where(outputs > 0.5, 1, 0)  # if output > 0.8 outputs 1 else 0
 
-    recall = recall_score(y_true=y, y_pred=rounded_preds)
-    precision = precision_score(y_true=y, y_pred=rounded_preds, zero_division=0)
-    f1 = f1_score(y_true=y, y_pred=rounded_preds)
+    fn = torch.tensor(0).to(device)
+    fp = torch.tensor(0).to(device)
+    tp = torch.tensor(0).to(device)
+
+    for i in range(len(rounded_preds)):
+        if rounded_preds[i] == 0 and labels[i] == 1:
+            fn += 1
+        elif rounded_preds[i] == 1 and labels[i] == 0:
+            fp += 1
+        elif rounded_preds[i] == 1 and labels[i] == 1:
+            tp += 1
+
+    recall = tp / (tp + fn)
+    precision = tp / (tp + fp) if (tp + fp) != 0 else 0
+    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) != 0 else 0
 
     return recall, precision, f1
 
