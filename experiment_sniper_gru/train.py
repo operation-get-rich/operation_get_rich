@@ -4,13 +4,12 @@ import time
 import numpy as np
 
 import matplotlib.pyplot as plt
-import pandas
 import torch
-from sklearn.metrics import recall_score, precision_score, f1_score
 from torch.autograd import Variable
 from torch.nn.utils.rnn import PackedSequence
 from torch.utils.data import DataLoader
 
+from decorators import timeit
 from experiment_sniper_gru.SniperGRU import SniperGRU
 from experiment_sniper_gru.dataset import SniperDataset
 
@@ -21,11 +20,13 @@ from utils import create_dir
 multiprocessing.set_start_method("spawn", True)
 
 # Arguments
-parser = argparse.ArgumentParser(description='TraderGRU Train')
+parser = argparse.ArgumentParser(description='Sniper GRU Train')
 
 # General Settings
 parser.add_argument('--gpu', type=int, default=0, help='gpu device id')
 parser.add_argument('--save', type=str, default='Train', help='experiment name')
+parser.add_argument('--dataset-name', required=True, type=str)
+parser.add_argument('--print-training-loop-time', default=False, type=bool)
 args = parser.parse_args()
 
 BATCH_SIZE = 10
@@ -34,7 +35,7 @@ BATCH_SIZE = 10
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 IS_TEST_MODE = False
-TEST_MODE_ITERATION_LIMIT = 100
+TEST_MODE_ITERATION_LIMIT = 10
 
 
 def train(
@@ -57,28 +58,28 @@ def train(
     pre_time = time.time()
 
     # Variables for Early Stopping
-    is_least_error_model = 0
     patient_epoch = 0
     min_loss_epoch_valid = 10000.0
     avg_losses_train = []
     avg_losses_valid = []
 
-    is_max_recall_model = 1
     max_recall_valid = 0
     avg_recalls_train = []
     avg_recalls_valid = []
 
-    is_max_precision_model = 1
     max_precision_valid = 0
     avg_precisions_train = []
     avg_precisions_valid = []
 
-    is_max_f1_model = 1
     max_f1_valid = 0
     avg_f1s_train = []
     avg_f1s_valid = []
 
     for epoch in range(num_epochs):
+        is_least_error_model = 0
+        is_max_recall_model = 0
+        is_max_precision_model = 0
+        is_max_f1_model = 0
         (
             avg_loss_train,
             avg_recall_train,
@@ -96,21 +97,23 @@ def train(
         avg_precisions_train.append(avg_precision_train)
         avg_f1s_train.append(avg_f1_train)
 
-        (
-            avg_loss_valid,
-            avg_recall_valid,
-            avg_precision_valid,
-            avg_f1_valid
-        ) = _validate(
-            valid_loader,
-            model,
-            loss_function,
-            batch_size
-        )
-        avg_losses_train.append(avg_loss_valid)
-        avg_recalls_train.append(avg_recall_valid)
-        avg_precisions_train.append(avg_precision_valid)
-        avg_f1s_train.append(avg_f1_valid)
+        with torch.no_grad():
+            (
+                avg_loss_valid,
+                avg_recall_valid,
+                avg_precision_valid,
+                avg_f1_valid
+            ) = _validate(
+                valid_loader,
+                model,
+                loss_function,
+                batch_size
+            )
+
+        avg_losses_valid.append(avg_loss_valid)
+        avg_recalls_valid.append(avg_recall_valid)
+        avg_precisions_valid.append(avg_precision_valid)
+        avg_f1s_valid.append(avg_f1_valid)
 
         torch.save(model.state_dict(), args.save + "/latest_model.pt")
 
@@ -132,6 +135,7 @@ def train(
                 patient_epoch = 0
                 torch.save(model.state_dict(), args.save + "/max_recall_model.pt")
 
+
             if avg_precision_valid > max_precision_valid:
                 is_max_precision_model = 1
                 max_precision_valid = avg_precision_valid
@@ -144,10 +148,6 @@ def train(
                 patient_epoch = 0
                 torch.save(model.state_dict(), args.save + "/max_f1_model.pt")
             else:
-                is_least_error_model = 0
-                is_max_recall_model = 0
-                is_max_precision_model = 0
-                is_max_f1_model = 0
                 patient_epoch += 1
                 if patient_epoch >= patience:
                     print('Early Stopped at Epoch:', epoch)
@@ -208,109 +208,149 @@ def train(
     plt.savefig(f'{args.save}/validation_metrics.png')
 
 
+@timeit
 def _train(train_loader, model, optimizer, loss_function, batch_size):
-    loss_sum = torch.tensor(0).float()
-    recall_sum = torch.tensor(0).float()
-    precision_sum = torch.tensor(0).float()
-    f1_sum = torch.tensor(0).float()
-
+    loss_sum, precision_sum, recall_sum, f1_sum = instantiate_metric_variables()
     test_mode_index = 0  # used just for confirming training are running properly
+    a = time.time()
+    for i, loaded_data in enumerate(train_loader):
+        features, labels, original_sequence_lengths = loaded_data
 
-    for features, labels, original_sequence_lengths in train_loader:
-
-        features = features.float().to(device)  # shape: batch_size x sequence_length x feature_length
-        labels = labels.float().to(device)  # shape: batch_size
-        original_sequence_lengths = original_sequence_lengths.to(device)  # shape: batch_size
+        features = features.float()  # shape: batch_size x sequence_length x feature_length
+        original_sequence_lengths  # shape: batch_size
 
         if features.shape[0] != batch_size:
             continue
 
-        features = Variable(features).to(device)
+        outputs = _get_predictions_from_model(model, features, original_sequence_lengths)
 
-        """
-        `pack_padded_sequence` returns a PackedSequence instance that helps the rnn to 
-        compute only on unpadded data
-        """
-        input = torch.nn.utils.rnn.pack_padded_sequence(
-            features,
-            original_sequence_lengths,
-            enforce_sorted=False,
-            batch_first=True)  # type: PackedSequence
-        outputs = model(input)  # batch_size x 1
-
+        labels = labels.float().to(device)  # shape: batch_size
         loss = loss_function(outputs, labels)
-        recall, precision, f1 = _get_evaluation_metric(outputs, labels)
-
-        loss_sum += loss
-        recall_sum += recall
-        precision_sum += precision
-        f1_sum += f1
 
         model.zero_grad()
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
-        if IS_TEST_MODE:
-            print(f'iteration {test_mode_index}')
-            test_mode_index += 1
-            if test_mode_index == TEST_MODE_ITERATION_LIMIT:
-                break
-    return (
-        loss_sum.detach().numpy() / len(train_loader),
-        recall_sum.detach().numpy() / len(train_loader),
-        precision_sum.detach().numpy() / len(train_loader),
-        f1_sum.detach().numpy() / len(train_loader)
-    )
-
-
-def _validate(valid_loader, model, loss_function, batch_size):
-    loss_sum = torch.tensor(0).float()
-    recall_sum = torch.tensor(0).float()
-    precision_sum = torch.tensor(0).float()
-    f1_sum = torch.tensor(0).float()
-    test_mode_index = 0
-    for features, labels, original_sequence_lengths in valid_loader:
-        features = features.float().to(device)  # shape: batch_size x sequence_length x feature_length
-        labels = labels.float().to(device)  # shape: batch_size
-        original_sequence_lengths = original_sequence_lengths.to(device)  # shape: batch_size
-
-        if features.shape[0] != batch_size:
-            continue
-
-        normalized_features = Variable(features).to(device)
-        outputs = model(normalized_features, original_sequence_lengths)  # batch_size x 1
-
-        loss = loss_function(outputs, labels)
         recall, precision, f1 = _get_evaluation_metric(outputs, labels)
 
         loss_sum += loss
         recall_sum += recall
         precision_sum += precision
         f1_sum += f1
+
+        if IS_TEST_MODE:
+            print(f'iteration {test_mode_index}')
+            test_mode_index += 1
+            if test_mode_index == TEST_MODE_ITERATION_LIMIT:
+                break
+        b = time.time()
+        if args.print_training_loop_time:
+            loop_time_taken = np.around(b - a, decimals=2)
+            print(f'{i}th loop, time taken: {loop_time_taken}s')
+    return (
+        loss_sum.cpu().detach().numpy() / len(train_loader),
+        recall_sum.cpu().detach().numpy() / len(train_loader),
+        precision_sum.cpu().detach().numpy() / len(train_loader),
+        f1_sum.cpu().detach().numpy() / len(train_loader)
+    )
+
+
+@timeit
+def _validate(valid_loader, model, loss_function, batch_size):
+    loss_sum, precision_sum, recall_sum, f1_sum = instantiate_metric_variables()
+    test_mode_index = 0  # used just for confirming training are running properly
+    a = time.time()
+    for i, loaded_data in enumerate(valid_loader):
+        features, labels, original_sequence_lengths = loaded_data
+
+        features = features.float()  # shape: batch_size x sequence_length x feature_length
+        original_sequence_lengths  # shape: batch_size
+
+        if features.shape[0] != batch_size:
+            continue
+
+        outputs = _get_predictions_from_model(model, features, original_sequence_lengths)
+
+        labels = labels.float().to(device)  # shape: batch_size
+        loss = loss_function(outputs, labels)
+
+        loss_sum, precision_sum, recall_sum, f1_sum = update_evaluation_metric(
+            outputs, labels, loss, loss_sum,
+            precision_sum, recall_sum, f1_sum
+        )
+
         if IS_TEST_MODE:
             print(f'Valid iteration {test_mode_index}')
             test_mode_index += 1
             if test_mode_index == TEST_MODE_ITERATION_LIMIT:
                 break
+        b = time.time()
+        if args.print_training_loop_time:
+            loop_time_taken = np.around(b - a, decimals=2)
+            print(f'{i}th loop, time taken: {loop_time_taken}s')
     return (
-        loss_sum.detach().numpy() / len(train_loader),
-        recall_sum.detach().numpy() / len(train_loader),
-        precision_sum.detach().numpy() / len(train_loader),
-        f1_sum.detach().numpy() / len(train_loader)
+        loss_sum.cpu().detach().numpy() / len(train_loader),
+        recall_sum.cpu().detach().numpy() / len(train_loader),
+        precision_sum.cpu().detach().numpy() / len(train_loader),
+        f1_sum.detach().cpu().numpy() / len(train_loader)
     )
+
+
+def update_evaluation_metric(outputs, labels, loss, loss_sum, precision_sum, recall_sum, f1_sum):
+    recall, precision, f1 = _get_evaluation_metric(outputs, labels)
+    loss_sum += loss
+    recall_sum += recall
+    precision_sum += precision
+    f1_sum += f1
+    return loss_sum, precision_sum, recall_sum, f1_sum
+
+
+def instantiate_metric_variables():
+    loss_sum = torch.tensor(0).float().to(device)
+    recall_sum = torch.tensor(0).float().to(device)
+    precision_sum = torch.tensor(0).float().to(device)
+    f1_sum = torch.tensor(0).float().to(device)
+    return loss_sum, precision_sum, recall_sum, f1_sum
+
+
+def _get_predictions_from_model(model, features, original_sequence_lengths):
+    """
+    Wraps the features with `rnn.pack_padded_sequence`.
+    `rnn.pack_padded_sequence` returns a PackedSequence instance that helps the rnn to
+    compute only on unpadded data
+    """
+    features = Variable(features)
+    input = torch.nn.utils.rnn.pack_padded_sequence(
+        features,
+        original_sequence_lengths,
+        enforce_sorted=False,
+        batch_first=True).to(device)  # type: PackedSequence
+    outputs = model(input)  # batch_size
+    return outputs  # batch_size
 
 
 def _get_evaluation_metric(
         outputs,  # batch_size x 1
-        y,  # batch_size x 1
+        labels,  # batch_size x 1
 ):
-    # round predictions to the closest integer
-    rounded_preds = torch.where(outputs > 0.5, 1, 0)  # if output > 0.8 outputs 1 else 0
+    rounded_preds = torch.where(outputs > 0.5, 1, 0)
 
-    recall = recall_score(y_true=y, y_pred=rounded_preds)
-    precision = precision_score(y_true=y, y_pred=rounded_preds)
-    f1 = f1_score(y_true=y, y_pred=rounded_preds)
+    fn = torch.tensor(0).to(device)
+    fp = torch.tensor(0).to(device)
+    tp = torch.tensor(0).to(device)
+
+    for i in range(len(rounded_preds)):
+        if rounded_preds[i] == 0 and labels[i] == 1:
+            fn += 1
+        elif rounded_preds[i] == 1 and labels[i] == 0:
+            fp += 1
+        elif rounded_preds[i] == 1 and labels[i] == 1:
+            tp += 1
+
+    recall = tp / (tp + fn)
+    precision = tp / (tp + fp) if (tp + fp) != 0 else 0
+    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) != 0 else 0
 
     return recall, precision, f1
 
@@ -319,9 +359,9 @@ if __name__ == "__main__":
     # Hyper-parameters
     num_classes = 1
     num_epochs = 30000
-    batch_size = 10
+    batch_size = BATCH_SIZE
     learning_rate = 0.0001
-    num_layers = 2
+    num_layers = 5
     hidden_size_multipier = 5
 
     # Create directories
@@ -331,18 +371,19 @@ if __name__ == "__main__":
     if torch.cuda.is_available():
         torch.cuda.set_device(args.gpu)
 
+    dataset_name = args.dataset_name
     train_data = SniperDataset(
         split='train',
-        dataset_name=f'sniper_training_data_3',
+        dataset_name=dataset_name,
     )
 
-    test_data = SniperDataset(
-        split='test',
-        dataset_name=f'sniper_training_data_3'
+    valid_data = SniperDataset(
+        split='valid',
+        dataset_name=dataset_name
     )
 
-    train_loader = DataLoader(train_data, num_workers=1, shuffle=True, batch_size=BATCH_SIZE)
-    test_loader = DataLoader(test_data, num_workers=1, shuffle=True, batch_size=BATCH_SIZE)
+    train_loader = DataLoader(train_data, num_workers=10, shuffle=True, batch_size=BATCH_SIZE)
+    valid_loader = DataLoader(valid_data, num_workers=10, shuffle=True, batch_size=BATCH_SIZE)
 
     inputs, label, original_sequence_lengths = next(iter(train_loader))
     # inputs: batch_size, seq_length, feature_length
@@ -359,7 +400,7 @@ if __name__ == "__main__":
     train(
         model,
         train_loader,
-        test_loader,
+        valid_loader,
         num_epochs=num_epochs,
         batch_size=batch_size,
         learning_rate=learning_rate,

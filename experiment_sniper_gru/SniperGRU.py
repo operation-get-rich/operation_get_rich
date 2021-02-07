@@ -1,11 +1,8 @@
 from typing import Union
 
-import torch
 import torch.nn as nn
 from torch import Tensor
 from torch.nn.utils.rnn import PackedSequence
-
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 class SniperGRU(nn.Module):

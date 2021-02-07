@@ -1,3 +1,4 @@
+import argparse
 import datetime
 import os
 import random
@@ -8,11 +9,20 @@ from pandas import DataFrame
 from directories import DATA_DIR
 from utils import create_dir
 
-ROOT_DATA_DIR = f'{DATA_DIR}/polygon_early_day_gap_segmenter_parallel'
-SNIPER_TRAINING_DATA_SAVE_DIR = f'{DATA_DIR}/sniper_training_data_unbalanced_3'
+parser = argparse.ArgumentParser('Sniper Segmenter')
 
-PROFIT_DELTA = .03
-BALANCED_SAMPLING = False
+parser.add_argument('--sd', required=True, type=str, help='Save Directory')
+parser.add_argument('--ds', default='polygon_early_day_gap_segmenter_parallel', type=str, help='Data Source')
+parser.add_argument('--profit', default=.01, type=float, help='Profit Goal')
+parser.add_argument('--balance', default=True, type=bool, help='Whether we balanced sampling')
+args = parser.parse_args()
+
+#
+ROOT_DATA_DIR = f'{DATA_DIR}/{args.ds}'
+SNIPER_TRAINING_DATA_SAVE_DIR = f'{DATA_DIR}/{args.sd}'
+
+PROFIT_DELTA = args.profit
+BALANCED_SAMPLING = args.balance
 
 for the_date in os.listdir(ROOT_DATA_DIR):
     for stock_file in os.listdir(os.path.join(ROOT_DATA_DIR, the_date)):
@@ -20,6 +30,8 @@ for the_date in os.listdir(ROOT_DATA_DIR):
             os.path.join(ROOT_DATA_DIR, the_date, stock_file),
             parse_dates=['time']
         )
+        if len(stock_df) == 0:
+            continue
         market_open = stock_df.iloc[0].time.replace(hour=9, minute=30)
         profittable_indexes = stock_df[stock_df.time >= market_open][
             stock_df.close >= stock_df.open * (1 + PROFIT_DELTA)].index
