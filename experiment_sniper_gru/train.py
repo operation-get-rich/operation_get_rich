@@ -26,9 +26,10 @@ parser = argparse.ArgumentParser(description='Sniper GRU Train')
 parser.add_argument('--gpu', type=int, default=0, help='gpu device id')
 parser.add_argument('--save', type=str, default='Train', help='experiment name')
 parser.add_argument('--dataset-name', required=True, type=str)
+parser.add_argument('--print-training-loop-time', default=False, type=bool)
 args = parser.parse_args()
 
-BATCH_SIZE = 50
+BATCH_SIZE = 10
 
 # check whether cuda is available
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -57,28 +58,28 @@ def train(
     pre_time = time.time()
 
     # Variables for Early Stopping
-    is_least_error_model = 0
     patient_epoch = 0
     min_loss_epoch_valid = 10000.0
     avg_losses_train = []
     avg_losses_valid = []
 
-    is_max_recall_model = 1
     max_recall_valid = 0
     avg_recalls_train = []
     avg_recalls_valid = []
 
-    is_max_precision_model = 1
     max_precision_valid = 0
     avg_precisions_train = []
     avg_precisions_valid = []
 
-    is_max_f1_model = 1
     max_f1_valid = 0
     avg_f1s_train = []
     avg_f1s_valid = []
 
     for epoch in range(num_epochs):
+        is_least_error_model = 0
+        is_max_recall_model = 0
+        is_max_precision_model = 0
+        is_max_f1_model = 0
         (
             avg_loss_train,
             avg_recall_train,
@@ -96,17 +97,18 @@ def train(
         avg_precisions_train.append(avg_precision_train)
         avg_f1s_train.append(avg_f1_train)
 
-        (
-            avg_loss_valid,
-            avg_recall_valid,
-            avg_precision_valid,
-            avg_f1_valid
-        ) = _validate(
-            valid_loader,
-            model,
-            loss_function,
-            batch_size
-        )
+        with torch.no_grad():
+            (
+                avg_loss_valid,
+                avg_recall_valid,
+                avg_precision_valid,
+                avg_f1_valid
+            ) = _validate(
+                valid_loader,
+                model,
+                loss_function,
+                batch_size
+            )
 
         avg_losses_valid.append(avg_loss_valid)
         avg_recalls_valid.append(avg_recall_valid)
@@ -133,6 +135,7 @@ def train(
                 patient_epoch = 0
                 torch.save(model.state_dict(), args.save + "/max_recall_model.pt")
 
+
             if avg_precision_valid > max_precision_valid:
                 is_max_precision_model = 1
                 max_precision_valid = avg_precision_valid
@@ -145,10 +148,6 @@ def train(
                 patient_epoch = 0
                 torch.save(model.state_dict(), args.save + "/max_f1_model.pt")
             else:
-                is_least_error_model = 0
-                is_max_recall_model = 0
-                is_max_precision_model = 0
-                is_max_f1_model = 0
                 patient_epoch += 1
                 if patient_epoch >= patience:
                     print('Early Stopped at Epoch:', epoch)
@@ -211,12 +210,10 @@ def train(
 
 @timeit
 def _train(train_loader, model, optimizer, loss_function, batch_size):
-    print("\n=== TRAINING ===\n")
     loss_sum, precision_sum, recall_sum, f1_sum = instantiate_metric_variables()
     test_mode_index = 0  # used just for confirming training are running properly
-
+    a = time.time()
     for i, loaded_data in enumerate(train_loader):
-        a = time.time()
         features, labels, original_sequence_lengths = loaded_data
 
         features = features.float()  # shape: batch_size x sequence_length x feature_length
@@ -248,8 +245,9 @@ def _train(train_loader, model, optimizer, loss_function, batch_size):
             if test_mode_index == TEST_MODE_ITERATION_LIMIT:
                 break
         b = time.time()
-        loop_time_taken = np.around(b - a, decimals=2)
-        print(f'{i}th loop, time taken: {loop_time_taken}s')
+        if args.print_training_loop_time:
+            loop_time_taken = np.around(b - a, decimals=2)
+            print(f'{i}th loop, time taken: {loop_time_taken}s')
     return (
         loss_sum.cpu().detach().numpy() / len(train_loader),
         recall_sum.cpu().detach().numpy() / len(train_loader),
@@ -260,11 +258,10 @@ def _train(train_loader, model, optimizer, loss_function, batch_size):
 
 @timeit
 def _validate(valid_loader, model, loss_function, batch_size):
-    print("\n=== Validation ===\n")
     loss_sum, precision_sum, recall_sum, f1_sum = instantiate_metric_variables()
     test_mode_index = 0  # used just for confirming training are running properly
-    for i, loaded_data in valid_loader:
-        a = time.time()
+    a = time.time()
+    for i, loaded_data in enumerate(valid_loader):
         features, labels, original_sequence_lengths = loaded_data
 
         features = features.float()  # shape: batch_size x sequence_length x feature_length
@@ -289,8 +286,9 @@ def _validate(valid_loader, model, loss_function, batch_size):
             if test_mode_index == TEST_MODE_ITERATION_LIMIT:
                 break
         b = time.time()
-        loop_time_taken = np.around(b - a, decimals=2)
-        print(f'{i}th loop, time taken: {loop_time_taken}s')
+        if args.print_training_loop_time:
+            loop_time_taken = np.around(b - a, decimals=2)
+            print(f'{i}th loop, time taken: {loop_time_taken}s')
     return (
         loss_sum.cpu().detach().numpy() / len(train_loader),
         recall_sum.cpu().detach().numpy() / len(train_loader),
@@ -363,7 +361,7 @@ if __name__ == "__main__":
     num_epochs = 30000
     batch_size = BATCH_SIZE
     learning_rate = 0.0001
-    num_layers = 2
+    num_layers = 5
     hidden_size_multipier = 5
 
     # Create directories
