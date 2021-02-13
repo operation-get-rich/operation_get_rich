@@ -118,6 +118,7 @@ class WaveNetModel(nn.Module):
             # parametrized skip connection
             s = x
             if x.size(2) != 1:
+                # if the passed in dilate < init_dilation, think of it as an undilate operation
                 s = dilate(x, 1, init_dilation=dilation)
             s = self.skip_convs[i](s)
             try:
