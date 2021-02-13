@@ -1,5 +1,10 @@
+import math
+
+import numpy as np
 from torch import nn
+from torch.autograd import Function
 from torch.autograd.grad_mode import F
+from torch.nn import ConstantPad1d
 
 
 class WaveNetModel(nn.Module):
@@ -136,5 +141,30 @@ class WaveNetModel(nn.Module):
 
 
 def dilate(x, dilation, init_dilation=1, pad_start=True):
-    # TODO: Implement this
-    NotImplemented
+    """
+        :param x: Tensor of size (N, C, L), where N is the input dilation, C is the number of channels, and L is the input length
+        :param dilation: Target dilation. Will be the size of the first dimension of the output tensor.
+        :param pad_start: If the input length is not compatible with the specified dilation, zero padding is used. This parameter determines wether the zeros are added at the start or at the end.
+        :return: The dilated tensor of size (dilation, C, L*N / dilation). The output might be zero padded at the start
+        """
+
+    [n, c, l] = x.size()  # x.size = (16, 32, 3085)
+    dilation_factor = dilation / init_dilation
+    if dilation_factor == 1:
+        return x
+
+    # zero padding for reshaping
+    new_l = int(np.ceil(l / dilation_factor) * dilation_factor)
+    if new_l != l:
+        l = new_l
+        x = ConstantPad1d((1, 0), 0)(x)  # zero-pad the start
+
+    l = math.ceil(l * init_dilation / dilation)
+    n = math.ceil(n * dilation / init_dilation)
+
+    # reshape according to dilation
+    x = x.permute(1, 2, 0).contiguous()  # (n, c, l) -> (c, l, n)
+    x = x.view(c, l, n)
+    x = x.permute(2, 0, 1).contiguous()  # (c, l, n) -> (n, c, l)
+
+    return x
