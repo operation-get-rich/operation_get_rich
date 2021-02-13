@@ -142,11 +142,11 @@ class WaveNetModel(nn.Module):
 
 def dilate(x, dilation, init_dilation=1, pad_start=True):
     """
-        :param x: Tensor of size (N, C, L), where N is the input dilation, C is the number of channels, and L is the input length
-        :param dilation: Target dilation. Will be the size of the first dimension of the output tensor.
-        :param pad_start: If the input length is not compatible with the specified dilation, zero padding is used. This parameter determines wether the zeros are added at the start or at the end.
-        :return: The dilated tensor of size (dilation, C, L*N / dilation). The output might be zero padded at the start
-        """
+    :param x: Tensor of size (N, C, L), where N is the input dilation, C is the number of channels, and L is the input length
+    :param dilation: Target dilation. Will be the size of the first dimension of the output tensor.
+    :param pad_start: If the input length is not compatible with the specified dilation, zero padding is used. This parameter determines wether the zeros are added at the start or at the end.
+    :return: The dilated tensor of size (dilation, C, L*N / dilation). The output might be zero padded at the start
+    """
 
     [n, c, l] = x.size()  # x.size = (16, 32, 3085)
     dilation_factor = dilation / init_dilation
