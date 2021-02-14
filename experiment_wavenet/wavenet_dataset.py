@@ -27,7 +27,7 @@ EMA_COLUMN_INDEX = 7
 RSI_COLUMN_INDEX = 8
 
 
-class WavenetDataset(torch.utils.data.Dataset):
+class WaveNetDataset(torch.utils.data.Dataset):
     TECHNICAL_INDICATOR_PERIOD = 14
 
     def __init__(self, dataset_name, split):
