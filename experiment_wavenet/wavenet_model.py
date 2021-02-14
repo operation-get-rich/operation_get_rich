@@ -2,7 +2,6 @@ import math
 
 import numpy as np
 from torch import nn
-from torch.autograd import Function
 from torch.autograd.grad_mode import F
 from torch.nn import ConstantPad1d
 
