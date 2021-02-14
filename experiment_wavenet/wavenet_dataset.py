@@ -89,20 +89,29 @@ class WavenetDataset(torch.utils.data.Dataset):
         selected_segment_np = PercentChangeNormalizer.normalize_volume(
             selected_segment_np,
             dataset_name=self.dataset_name
-        )
+        )  # shape: ~390, 9
 
-        selected_segment_length = selected_segment_np.shape[0]
+        # The convolution based model accept data with the features in the first axis
+        selected_segment_np = np.transpose(selected_segment_np)  # shape: 9, ~390
+
+        selected_segment_length = selected_segment_np.shape[1]
         if selected_segment_length < SEQUENCE_LENGTH:
-            selected_segment_np = np.vstack(
-                [selected_segment_np,
-                 np.zeros((SEQUENCE_LENGTH - selected_segment_length,
-                           selected_segment_np.shape[1]))]
+            selected_segment_np = np.hstack(
+                [
+                    selected_segment_np,
+                    np.zeros(
+                        (
+                            selected_segment_np.shape[0],
+                            SEQUENCE_LENGTH - selected_segment_length
+                        )
+                    )
+                ]
             )
 
             return selected_segment_np, selected_segment_length
 
         else:
-            selected_segment_np = selected_segment_np[0: SEQUENCE_LENGTH, :]
+            selected_segment_np = selected_segment_np[:, 0:SEQUENCE_LENGTH]
 
             return selected_segment_np, SEQUENCE_LENGTH
 
