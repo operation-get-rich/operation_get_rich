@@ -1,7 +1,7 @@
 import json
 import os
 import random
-from datetime import datetime
+from datetime import time
 
 import numpy as np
 import pandas
@@ -10,11 +10,11 @@ from ta.momentum import RSIIndicator
 from ta.trend import EMAIndicator
 from ta.volume import VolumeWeightedAveragePrice
 
-from directories import PROJECT_ROOT_DIR
+from directories import PROJECT_ROOT_DIR, DATA_DIR
 
 SEQUENCE_LENGTH = 390
 
-MARKET_OPEN = datetime.time(hour=10, minute=0, second=0)
+MARKET_OPEN = time(hour=9, minute=30, second=0)
 
 OPEN_COLUMN_INDEX = 0
 CLOSE_COLUMN_INDEX = 1
@@ -33,11 +33,19 @@ class WaveNetDataset(torch.utils.data.Dataset):
     def __init__(self, dataset_name, split):
         self.dataset_name = dataset_name
         self.segment_list = []
-        company_directories = os.listdir(dataset_name)
-        for company in company_directories:
-            segments = os.listdir(os.path.join(dataset_name, company))
+
+        date_directories = os.listdir(os.path.join(DATA_DIR, dataset_name))
+
+        for date in date_directories:
+            try:
+                date_dir = os.path.join(DATA_DIR, dataset_name, date)
+                segments = os.listdir(date_dir)
+            except NotADirectoryError:
+                continue
+
             for segment in segments:
-                self.segment_list.append(os.path.join(dataset_name, company, segment))
+                self.segment_list.append(os.path.join(date_dir, segment)
+                                         )
 
         random.seed(69420)
         random.shuffle(self.segment_list)
