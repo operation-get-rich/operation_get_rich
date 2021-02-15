@@ -1,8 +1,10 @@
 import math
 
 import numpy as np
+import torch
+import torch.nn.functional as F
 from torch import nn
-from torch.autograd.grad_mode import F
+from torch.autograd import Variable
 from torch.nn import ConstantPad1d
 
 
@@ -10,7 +12,7 @@ class WaveNetModel(nn.Module):
     def __init__(
             self,
             feature_length,
-            layers=10,
+            layers=5,
             blocks=4,
             dilation_channels=32,
             residual_channels=32,
@@ -42,7 +44,7 @@ class WaveNetModel(nn.Module):
         self.start_conv = nn.Conv1d(
             in_channels=feature_length,
             out_channels=residual_channels,
-            kernel_siz=1,
+            kernel_size=1,
             bias=bias
         )
 
@@ -117,7 +119,7 @@ class WaveNetModel(nn.Module):
             # parametrized skip connection
             s = x
             if x.size(2) != 1:
-                # if the passed in dilate < init_dilation, think of it as an undilate operation
+                # if the passed in dilate < init_dilation, think of it as an un-dilate operation
                 s = dilate(x, 1, init_dilation=dilation)
             s = self.skip_convs[i](s)
             try:
@@ -140,7 +142,7 @@ class WaveNetModel(nn.Module):
         return x
 
 
-def dilate(x, dilation, init_dilation=1, pad_start=True):
+def dilate(x, dilation, init_dilation=1):
     """
     :param x: Tensor of size (N, C, L), where N is the input dilation, C is the number of channels, and L is the input length
     :param dilation: Target dilation. Will be the size of the first dimension of the output tensor.
@@ -163,8 +165,14 @@ def dilate(x, dilation, init_dilation=1, pad_start=True):
     n = math.ceil(n * dilation / init_dilation)
 
     # reshape according to dilation
+    # group open prices together, close prices together, low prices together etc
     x = x.permute(1, 2, 0).contiguous()  # (n, c, l) -> (c, l, n)
+
+    # group adjacent open prices together, group adjacent close prices together,
+    # group low prices together etc
     x = x.view(c, l, n)
+
+    # Group dilated (open, close, low,..) together
     x = x.permute(2, 0, 1).contiguous()  # (c, l, n) -> (n, c, l)
 
     return x
