@@ -9,6 +9,7 @@ from torch.autograd import Variable
 from torch.utils.data import DataLoader
 
 from experiment_wavenet.wavenet_dataset import WaveNetDataset, OPEN_COLUMN_INDEX, IS_MARKET_OPEN_INDEX
+from experiment_wavenet.wavenet_directories import RUNS_DIR
 from experiment_wavenet.wavenet_model import WaveNetModel, ProfitLoss
 from utils import create_dir
 
@@ -263,8 +264,10 @@ if __name__ == "__main__":
 
     inputs, original_sequence_lengths = next(iter(train_loader))
 
+    inputs  # 10, 9, 390 -> 10 samples of (feature_length, sequence_length)
+
     model = WaveNetModel(
-        feature_length=inputs.shape[0],
+        feature_length=inputs.shape[1],
     )
 
     # Create directories
@@ -273,8 +276,9 @@ if __name__ == "__main__":
         model.load_state_dict(torch.load(model_path,
                                          map_location=lambda storage, loc: storage))
 
+    create_dir(RUNS_DIR)
     args.save = '{}-{}'.format(args.save, time.strftime("%Y%m%d-%H%M%S"))
-    args.save = os.path.join('runs', args.save)
+    args.save = os.path.join(RUNS_DIR, args.save)
     create_dir(args.save)
 
     if torch.cuda.is_available():
