@@ -38,12 +38,11 @@ class Wave_Block(nn.Module):
 class WaveNetModel(nn.Module):
     def __init__(self, feature_length=8, kernel_size=3):
         super().__init__()
-        # self.LSTM = nn.GRU(input_size=input_size, hidden_size=64, num_layers=2, batch_first=True, bidirectional=True)
         self.wave_block1 = Wave_Block(in_channels=feature_length, out_channels=16, dilation_rates=12, kernel_size=kernel_size)
         self.wave_block2 = Wave_Block(in_channels=16, out_channels=32, dilation_rates=8, kernel_size=kernel_size)
         self.wave_block3 = Wave_Block(in_channels=32, out_channels=64, dilation_rates=4, kernel_size=kernel_size)
         self.wave_block4 = Wave_Block(in_channels=64, out_channels=128, dilation_rates=1, kernel_size=kernel_size)
-        self.fc = nn.Linear(in_features=128, out_features=11)
+        self.fc = nn.Linear(in_features=128, out_features=1)
 
     def forward(self, x):
         x = self.wave_block1(x)
@@ -51,6 +50,6 @@ class WaveNetModel(nn.Module):
         x = self.wave_block3(x)
 
         x = self.wave_block4(x)
-        # x, _ = self.LSTM(x)
+        x = x.permute(0, 2, 1)
         x = self.fc(x)
         return x
