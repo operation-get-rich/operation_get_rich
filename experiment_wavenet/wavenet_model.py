@@ -8,7 +8,7 @@ from torch.autograd import Variable
 from torch.nn import ConstantPad1d
 
 
-class WaveNetModel(nn.Module):
+class WaveNetModelLegacy(nn.Module):
     def __init__(
             self,
             feature_length,
@@ -21,7 +21,7 @@ class WaveNetModel(nn.Module):
             kernel_size=2,
             bias=False
     ):
-        super(WaveNetModel, self).__init__()
+        super(WaveNetModelLegacy, self).__init__()
 
         self.feature_length = feature_length
         self.layers = layers
@@ -90,7 +90,7 @@ class WaveNetModel(nn.Module):
                                     kernel_size=1,
                                     bias=True)
 
-    def wavenet(self, input):
+    def forward(self, input):
         x = self.start_conv(input)
 
         skip = 0
@@ -119,7 +119,7 @@ class WaveNetModel(nn.Module):
             # parametrized skip connection
             s = x
             if x.size(2) != 1:
-                # if the passed in dilate < init_dilation, think of it as an un-dilate operation
+                # The passed in dilate is < init_dilation, think of it as an un-dilate operation
                 s = dilate(x, 1, init_dilation=dilation)
             s = self.skip_convs[i](s)
             try:
@@ -135,10 +135,6 @@ class WaveNetModel(nn.Module):
         x = F.relu(self.end_conv_1(x))
         x = self.end_conv_2(x)
 
-        return x
-
-    def forward(self, input):
-        x = self.wavenet(input)
         return x
 
 

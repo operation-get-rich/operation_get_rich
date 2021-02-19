@@ -10,7 +10,9 @@ from torch.utils.data import DataLoader
 
 from experiment_wavenet.wavenet_dataset import WaveNetDataset, OPEN_COLUMN_INDEX, IS_MARKET_OPEN_INDEX
 from experiment_wavenet.wavenet_directories import RUNS_DIR
-from experiment_wavenet.wavenet_model import WaveNetModel, ProfitLoss
+from experiment_wavenet.wavenet_model import WaveNetModelLegacy, ProfitLoss
+from experiment_wavenet.wavenet_model_2 import WaveNetModel
+
 from utils import create_dir
 
 multiprocessing.set_start_method("spawn", True)
@@ -22,6 +24,7 @@ parser = argparse.ArgumentParser(description='Wavenet Train')
 parser.add_argument('--gpu', type=int, default=0, help='gpu device id')
 parser.add_argument('--load', type=str, default='', help='experiment name')
 parser.add_argument('--save', type=str, default='Debug', help='experiment name')
+parser.add_argument('--multiply', action='store_true')
 
 args = parser.parse_args()
 
@@ -269,6 +272,11 @@ if __name__ == "__main__":
     model = WaveNetModel(
         feature_length=inputs.shape[1],
     )
+
+    # model = WaveNetModelLegacy(
+    #     feature_length=inputs.shape[1],
+    #     kernel_size=3
+    # )
 
     # Create directories
     if args.load:
