@@ -4,6 +4,9 @@ import torch.nn as nn
 
 # wavenet
 # from https://www.kaggle.com/hanjoonchoe/wavenet-lstm-pytorch-ignite-ver
+from torch.autograd.grad_mode import F
+
+
 class Wave_Block(nn.Module):
 
     def __init__(self, in_channels, out_channels, dilation_rates, kernel_size):
@@ -35,14 +38,19 @@ class Wave_Block(nn.Module):
 
 
 class WaveNetModel(nn.Module):
-    def __init__(self, feature_length=8, kernel_size=3):
+    def __init__(self, feature_length=8, kernel_size=3, hard=False):
         super().__init__()
         self.wave_block1 = Wave_Block(in_channels=feature_length, out_channels=16, dilation_rates=12,
                                       kernel_size=kernel_size)
         self.wave_block2 = Wave_Block(in_channels=16, out_channels=32, dilation_rates=8, kernel_size=kernel_size)
         self.wave_block3 = Wave_Block(in_channels=32, out_channels=64, dilation_rates=4, kernel_size=kernel_size)
         self.wave_block4 = Wave_Block(in_channels=64, out_channels=128, dilation_rates=1, kernel_size=kernel_size)
+        self.action_layer = nn.Linear(
+            in_features=128,
+            out_features=1
+        )
         self.fc = nn.Linear(in_features=128, out_features=1)
+        self.hard = hard
 
     def forward(self, x):
         x = self.wave_block1(x)
@@ -51,8 +59,41 @@ class WaveNetModel(nn.Module):
 
         x = self.wave_block4(x)
         x = x.permute(0, 2, 1)
-        x = self.fc(x)
-        return x
+
+        curr_out = self.fc(x)
+        curr_out = torch.tanh(curr_out)
+
+        action_logit = self.action_layer(x)
+        temperature = 0.05
+        action = self._gumbel_softmax_sample(action_logit, temperature, hard=self.hard)
+        curr_out = curr_out * action
+
+        return curr_out
+
+    def _gumbel_softmax_sample(self, logits, temperature, hard=False, deterministic=False, eps=1e-20):
+
+        if deterministic:
+            if logits.shape[-1] == 1:
+                return F.sigmoid(logits)
+            else:
+                return F.softmax(logits, dim=-1)
+
+        # Stochastic
+        if logits.shape[-1] == 1:
+            noise = torch.rand_like(logits)
+            y = (logits + torch.log(noise + eps) - torch.log(1 - noise + eps))
+            y = torch.sigmoid(y / temperature)
+            if hard:
+                return (y > 0.5).float()
+            else:
+                return y
+        else:
+            y = logits + self.sample_gumbel(logits.size())
+            y = F.softmax(y / temperature, dim=-1)
+            if hard:
+                return (y > 0.5).float()
+            else:
+                return y
 
 
 def ProfitLoss(trade_sequence, market_sequence, is_premarket=None):

@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 
 from experiment_wavenet.wavenet_dataset import WaveNetDataset, OPEN_COLUMN_INDEX, IS_MARKET_OPEN_INDEX
 from experiment_wavenet.wavenet_directories import RUNS_DIR
-from experiment_wavenet.wavenet_model import WaveNetModel
+from experiment_wavenet.wavenet_model import WaveNetModel, ProfitLoss
 
 from utils import create_dir
 
@@ -131,8 +131,8 @@ def _train(train_loader, wavenet_model, loss_function, optimizer, batch_size):
             model=wavenet_model
         )
 
-        open_prices = features[:, :, OPEN_COLUMN_INDEX]
-        is_premarket = features[:, :, IS_MARKET_OPEN_INDEX]
+        open_prices = features[:, OPEN_COLUMN_INDEX, :]
+        is_premarket = features[:, IS_MARKET_OPEN_INDEX, :]
 
         loss_train = compute_loss(
             loss_function=loss_function,
@@ -175,7 +175,6 @@ def compute_loss(
             current_outputs,
             current_prices,
             current_is_premarket,
-            args.next_trade
         )
 
         losses.append(current_loss)
