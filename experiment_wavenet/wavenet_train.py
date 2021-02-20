@@ -10,8 +10,7 @@ from torch.utils.data import DataLoader
 
 from experiment_wavenet.wavenet_dataset import WaveNetDataset, OPEN_COLUMN_INDEX, IS_MARKET_OPEN_INDEX
 from experiment_wavenet.wavenet_directories import RUNS_DIR
-from experiment_wavenet.wavenet_model import WaveNetModelLegacy, ProfitLoss
-from experiment_wavenet.wavenet_model_2 import WaveNetModel
+from experiment_wavenet.wavenet_model import WaveNetModel
 
 from utils import create_dir
 
@@ -272,11 +271,6 @@ if __name__ == "__main__":
     model = WaveNetModel(
         feature_length=inputs.shape[1],
     )
-
-    # model = WaveNetModelLegacy(
-    #     feature_length=inputs.shape[1],
-    #     kernel_size=3
-    # )
 
     # Create directories
     if args.load:
