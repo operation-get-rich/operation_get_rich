@@ -160,7 +160,7 @@ class PercentChangeNormalizer:
 
             data[i, HIGH_COLUMN_INDEX] = cls._compute_percent_change(
                 anchor_high_price,
-                dat1a[i, HIGH_COLUMN_INDEX])
+                data[i, HIGH_COLUMN_INDEX])
 
             data[i, VWAP_COLUMN_INDEX] = cls._compute_percent_change(
                 anchor_vwap,
