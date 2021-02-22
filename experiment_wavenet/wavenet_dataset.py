@@ -6,6 +6,7 @@ from datetime import time
 import numpy as np
 import pandas
 import torch.utils.data
+from pandas.errors import ParserError
 from ta.momentum import RSIIndicator
 from ta.trend import EMAIndicator
 from ta.volume import VolumeWeightedAveragePrice
@@ -44,6 +45,9 @@ class WaveNetDataset(torch.utils.data.Dataset):
                 continue
 
             for segment in segments:
+                # sometimes '.DS_STORE' is randomly created
+                if segment[0] == '.':
+                    continue
                 self.segment_list.append(os.path.join(date_dir, segment)
                                          )
 
@@ -58,7 +62,6 @@ class WaveNetDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, index):
         selected_segment = self.segment_list[index]
-
         selected_segment_df = pandas.read_csv(
             filepath_or_buffer=selected_segment,
             parse_dates=['time']
@@ -90,14 +93,6 @@ class WaveNetDataset(torch.utils.data.Dataset):
         ).rsi()
 
         selected_segment_np = selected_segment_df[self.TECHNICAL_INDICATOR_PERIOD:].to_numpy()
-
-        selected_segment_np = PercentChangeNormalizer.normalize_price_into_percent_change(
-            selected_segment_np
-        )
-        selected_segment_np = PercentChangeNormalizer.normalize_volume(
-            selected_segment_np,
-            dataset_name=self.dataset_name
-        )  # shape: ~390, 9
 
         # The convolution based model accept data with the features in the first axis
         selected_segment_np = np.transpose(selected_segment_np)  # shape: 9, ~390
@@ -138,7 +133,7 @@ class PercentChangeNormalizer:
         data = np.copy(data)
         data[:, VOLUME_COLUMN_INDEX] -= stats[dataset_name]['volume']['mean']
         data[:, VOLUME_COLUMN_INDEX] /= stats[dataset_name]['volume']['std']
-        return data
+        return torch.Tensor(data)
 
     @classmethod
     def normalize_price_into_percent_change(cls, data):
@@ -165,7 +160,7 @@ class PercentChangeNormalizer:
 
             data[i, HIGH_COLUMN_INDEX] = cls._compute_percent_change(
                 anchor_high_price,
-                data[i, HIGH_COLUMN_INDEX])
+                dat1a[i, HIGH_COLUMN_INDEX])
 
             data[i, VWAP_COLUMN_INDEX] = cls._compute_percent_change(
                 anchor_vwap,
@@ -174,7 +169,7 @@ class PercentChangeNormalizer:
             data[i, EMA_COLUMN_INDEX] = cls._compute_percent_change(
                 anchor_ema,
                 data[i, EMA_COLUMN_INDEX])
-        return data
+        return torch.Tensor(data)
 
     @classmethod
     def _compute_percent_change(cls, p1, p2):

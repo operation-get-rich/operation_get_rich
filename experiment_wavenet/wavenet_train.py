@@ -8,7 +8,8 @@ import torch
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
 
-from experiment_wavenet.wavenet_dataset import WaveNetDataset, OPEN_COLUMN_INDEX, IS_MARKET_OPEN_INDEX
+from experiment_wavenet.wavenet_dataset import WaveNetDataset, OPEN_COLUMN_INDEX, IS_MARKET_OPEN_INDEX, \
+    PercentChangeNormalizer
 from experiment_wavenet.wavenet_directories import RUNS_DIR
 from experiment_wavenet.wavenet_model import WaveNetModel, ProfitLoss
 
@@ -69,12 +70,13 @@ def train(
             batch_size
         )
 
-        losses_epoch_valid = _validate(
-            valid_loader,
-            wavenet_model,
-            loss_function,
-            batch_size
-        )
+        with torch.no_grad():
+            losses_epoch_valid = _validate(
+                valid_loader,
+                wavenet_model,
+                loss_function,
+                batch_size
+            )
 
         torch.save(wavenet_model.state_dict(), args.save + '/latest_model.pt')
 
@@ -202,12 +204,20 @@ def get_trades_from_model(
     use_gpu = torch.cuda.is_available()
     features = features.float()
 
-    if use_gpu:
-        features = Variable(features.cuda())
-    else:
-        features = Variable(features)
+    normalized_features = PercentChangeNormalizer.normalize_volume(
+        data=features,
+        dataset_name='polygon_early_day_gap_segmenter_parallel',
+    )
+    normalized_features = PercentChangeNormalizer.normalize_price_into_percent_change(
+        normalized_features
+    )
 
-    trades = model(features)  # batch_size x sequence_length
+    if use_gpu:
+        normalized_features = Variable(normalized_features.cuda())
+    else:
+        normalized_features = Variable(normalized_features)
+
+    trades = model(normalized_features)  # batch_size x sequence_length
 
     return trades
 
