@@ -233,8 +233,8 @@ def _validate(valid_loader, trader_gru_model, loss_function, batch_size):
             model=trader_gru_model
         )
 
-        open_prices = features[:, :, 0]
-        is_premarket = features[:, :, IS_MARKET_OPEN_INDEX]
+        open_prices = features[:, OPEN_COLUMN_INDEX, :]
+        is_premarket = features[:, IS_MARKET_OPEN_INDEX, :]
 
         loss_val = compute_loss(
             loss_function=loss_function,
@@ -275,10 +275,10 @@ if __name__ == "__main__":
 
     inputs, original_sequence_lengths = next(iter(train_loader))
 
-    inputs  # 10, 9, 390 -> 10 samples of (feature_length, sequence_length)
+    inputs  # 10, 390, 9 -> 10 samples of (feature_length, sequence_length)
 
     model = WaveNetModel(
-        feature_length=inputs.shape[1],
+        feature_length=inputs.shape[2],
     )
 
     # Create directories
