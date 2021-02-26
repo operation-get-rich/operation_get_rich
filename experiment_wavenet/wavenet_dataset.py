@@ -94,27 +94,18 @@ class WaveNetDataset(torch.utils.data.Dataset):
 
         selected_segment_np = selected_segment_df[self.TECHNICAL_INDICATOR_PERIOD:].to_numpy()
 
-        # The convolution based model accept data with the features in the first axis
-        selected_segment_np = np.transpose(selected_segment_np)  # shape: 9, ~390
-
-        selected_segment_length = selected_segment_np.shape[1]
+        selected_segment_length = selected_segment_np.shape[0]
         if selected_segment_length < SEQUENCE_LENGTH:
-            selected_segment_np = np.hstack(
-                [
-                    selected_segment_np,
-                    np.zeros(
-                        (
-                            selected_segment_np.shape[0],
-                            SEQUENCE_LENGTH - selected_segment_length
-                        )
-                    )
-                ]
+            selected_segment_np = np.vstack(
+                [selected_segment_np,
+                 np.zeros((SEQUENCE_LENGTH - selected_segment_length,
+                           selected_segment_np.shape[1]))]
             )
 
             return selected_segment_np, selected_segment_length
 
         else:
-            selected_segment_np = selected_segment_np[:, 0:SEQUENCE_LENGTH]
+            selected_segment_np = selected_segment_np[0: SEQUENCE_LENGTH, :]
 
             return selected_segment_np, SEQUENCE_LENGTH
 
@@ -173,4 +164,5 @@ class PercentChangeNormalizer:
 
     @classmethod
     def _compute_percent_change(cls, p1, p2):
+        p1 += 0.0001  # sometimes p1 can be 0
         return (p2 / p1) - 1
