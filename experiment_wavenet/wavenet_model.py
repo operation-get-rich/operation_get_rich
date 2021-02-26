@@ -1,3 +1,6 @@
+import math
+
+import pandas
 import torch
 import torch.nn as nn
 
@@ -53,6 +56,7 @@ class WaveNetModel(nn.Module):
         self.hard = hard
 
     def forward(self, x):
+        x = x.permute(0, 2, 1)
         x = self.wave_block1(x)
         x = self.wave_block2(x)
         x = self.wave_block3(x)
