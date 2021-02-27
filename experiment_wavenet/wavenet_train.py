@@ -133,8 +133,8 @@ def _train(train_loader, wavenet_model, loss_function, optimizer, batch_size):
             model=wavenet_model
         )
 
-        open_prices = features[:, OPEN_COLUMN_INDEX, :]
-        is_premarket = features[:, IS_MARKET_OPEN_INDEX, :]
+        open_prices = features[:, :, OPEN_COLUMN_INDEX]
+        is_premarket = features[:, :, IS_MARKET_OPEN_INDEX]
 
         loss_train = compute_loss(
             loss_function=loss_function,
@@ -275,7 +275,7 @@ if __name__ == "__main__":
 
     inputs, original_sequence_lengths = next(iter(train_loader))
 
-    inputs  # 10, 390, 9 -> 10 samples of (feature_length, sequence_length)
+    inputs  # 10, 390, 9
 
     model = WaveNetModel(
         feature_length=inputs.shape[2],
