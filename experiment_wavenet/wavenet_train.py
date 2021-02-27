@@ -233,8 +233,8 @@ def _validate(valid_loader, trader_gru_model, loss_function, batch_size):
             model=trader_gru_model
         )
 
-        open_prices = features[:, OPEN_COLUMN_INDEX, :]
-        is_premarket = features[:, IS_MARKET_OPEN_INDEX, :]
+        open_prices = features[:, :, OPEN_COLUMN_INDEX]
+        is_premarket = features[:, :, IS_MARKET_OPEN_INDEX]
 
         loss_val = compute_loss(
             loss_function=loss_function,
