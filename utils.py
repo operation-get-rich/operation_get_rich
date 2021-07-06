@@ -2,9 +2,12 @@ import json
 import os
 import shutil
 from datetime import datetime, timedelta
+from typing import List, Tuple
+
 import pytz
 
 import alpaca_trade_api as tradeapi
+from dateutil.parser import parse
 
 from config import PAPER_ALPACA_API_KEY, PAPER_ALPACA_SECRET_KEY, PAPER_ALPACA_BASE_URL
 from directories import PROJECT_ROOT_DIR
@@ -89,6 +92,7 @@ def get_alpaca_time_str_format(
 
 
 def get_previous_market_open(anchor_time=None):
+    # type: (datetime) -> datetime
     if not anchor_time:
         anchor_time = get_current_datetime()
 
@@ -101,6 +105,35 @@ def get_previous_market_open(anchor_time=None):
         previous_market_open_date_str = previous_market_open.date().strftime(DATE_FORMAT)
 
     return previous_market_open
+
+
+def construct_polygon_date_tuples(start_datetime, end_datetime):
+    # type: (datetime, datetime) -> List[Tuple[str, str]]
+    """
+    :param start_date: a datetime instance
+    :param end_date: a datetime instance
+    :return:
+
+    Return a list of tuples with these datas:
+        (start_date, start_date + 17 days)
+        (start_date + 17 days, start_date + 34 days)
+        ...
+        (..., end_date)
+    17 days because Polygon for some reason can only download stocks data 17 days at a time
+    """
+    date_tuples = []
+    current_datetime = start_datetime
+    while current_datetime < end_datetime:
+        current_next_datetime = min(end_datetime, current_datetime + timedelta(days=17))
+        date_tuples.append(
+            (
+                str(current_datetime),
+                str(current_next_datetime)
+            )
+        )
+        current_datetime = current_datetime + timedelta(days=18)
+
+    return date_tuples
 
 
 """"""

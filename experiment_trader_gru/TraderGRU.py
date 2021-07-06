@@ -110,9 +110,8 @@ class TraderGRU(nn.Module):
 
 
 def ProfitLoss(trade_sequence, market_sequence, is_premarket=None, next_trade=False):
-    if next_trade:
-        trade_sequence = trade_sequence[:-1]
-        market_sequence = market_sequence[1:]
+    trade_sequence = trade_sequence[:-1]  # since we want to predict next trade
+    market_sequence = market_sequence[1:]  # since we want to predict next trade
 
     assert trade_sequence.shape[0] == market_sequence.shape[0]
 

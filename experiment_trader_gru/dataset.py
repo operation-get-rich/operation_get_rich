@@ -80,7 +80,8 @@ class TraderGRUDataSet(torch.utils.data.Dataset):
                 n=TECHNICAL_INDICATOR_PERIOD
             ).rsi()
 
-        selected_segment_np = selected_segment_df[TECHNICAL_INDICATOR_PERIOD:].to_numpy()
+        selected_segment_np = selected_segment_df[
+                              TECHNICAL_INDICATOR_PERIOD:].to_numpy()  # shape: sequence_length x feature_length
 
         selected_segment_length = selected_segment_np.shape[0]
         if selected_segment_length < SEQUENCE_LENGTH:

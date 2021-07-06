@@ -3,8 +3,6 @@ Downloader that is optimized for S3: It will store all stocks data in 1 file
 """
 import argparse
 import os
-import time
-from datetime import timedelta
 from typing import AnyStr, List
 
 import alpaca_trade_api as tradeapi
@@ -16,12 +14,13 @@ from dateutil.parser import parse
 from config import ALPACA_KEY_ID, ALPACA_SECRET_KEY, ALPACA_BASE_URL
 from decorators import retry_with_timeout, RetryTimeoutError
 from directories import DATA_DIR
-from utils import get_all_ticker_names, create_dir, get_current_datetime, get_alpaca_time_str_format
+from utils import get_all_ticker_names, create_dir, get_current_datetime, get_alpaca_time_str_format, \
+    construct_polygon_date_tuples
 
 SAVE_PATH_DIR = f'{DATA_DIR}/polygon_stock_prices'
 START_DATE = '2019-01-01T03:00:00-05:00'
-current_date_time = get_alpaca_time_str_format(get_current_datetime())
-END_DATE = current_date_time
+current_datetime_str = get_alpaca_time_str_format(get_current_datetime())
+END_DATE = current_datetime_str
 COMPANY_STEPS = 200
 
 create_dir(DATA_DIR)
@@ -51,7 +50,7 @@ def main():
 
 def _download_all_tickers_in_batches(tickers):
     # type: (List[AnyStr]) -> None
-    date_tuples = _construct_date_tuples(START_DATE, END_DATE)
+    date_tuples = construct_polygon_date_tuples(parse(START_DATE), parse(END_DATE))
     start = args.start_index
     failed_tickers = []
     while start < len(tickers):
@@ -121,25 +120,6 @@ def _download_ticker(ticker, start_date, end_date):
         _from=start_date,
         to=end_date
     )
-
-
-def _construct_date_tuples(start_date, end_date):
-    date_tuples = []
-
-    start_datetime = parse(start_date)
-    end_datetime = parse(end_date)
-
-    current_datetime = start_datetime
-    while current_datetime < end_datetime:
-        date_tuples.append(
-            (
-                str(current_datetime),
-                str(current_datetime + timedelta(days=17))
-            )
-        )
-        current_datetime = current_datetime + timedelta(days=18)
-
-    return date_tuples
 
 
 def _combine_all_stock_batches():
