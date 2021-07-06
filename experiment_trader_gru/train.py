@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader
 from directories import DATA_DIR
 from experiment_trader_gru.TraderGRU import TraderGRU, ProfitLoss
 from experiment_trader_gru.dataset import TraderGRUDataSet, OPEN_COLUMN_INDEX
+from experiment_trader_gru.experiment_trader_gru_directories import EXPERIMENT_ROOT_DIR
 from experiment_trader_gru.normalizer import PercentChangeNormalizer
 
 import multiprocessing
@@ -26,9 +27,10 @@ parser = argparse.ArgumentParser(description='TraderGRU Train')
 parser.add_argument('--gpu', type=int, default=0, help='gpu device id')
 parser.add_argument('--load', type=str, default='', help='experiment name')
 parser.add_argument('--save', type=str, default='Debug', help='experiment name')
-parser.add_argument('--next_trade', action='store_true')
 parser.add_argument('--multiply', action='store_true')
-parser.add_argument('--sparse', action='store_true')
+parser.add_argument('--sparse', default=True, action='store_true')
+parser.add_argument('--add-penalties', default=False, action='store_true')
+parser.add_argument('--dataset-name', default='polygon_early_day_gap_segmenter_parallel', type=str)
 
 args = parser.parse_args()
 
@@ -51,9 +53,6 @@ def train(
     print('Model Structure: ', trader_gru_model)
     print('Start Training ... ')
 
-    average_epoch_losses_train = []
-    average_epoch_losses_valid = []
-
     cur_time = time.time()
     pre_time = time.time()
 
@@ -62,7 +61,7 @@ def train(
     patient_epoch = 0
     min_loss_epoch_valid = 10000.0
     for epoch in range(num_epochs):
-        losses_epoch_train = _train(
+        losses_epoch_train, losess_without_penalty_train = _train(
             train_loader,
             trader_gru_model,
             loss_function,
@@ -70,7 +69,7 @@ def train(
             batch_size
         )
 
-        losses_epoch_valid = _validate(
+        losses_epoch_valid, losess_without_penalty_valid = _validate(
             valid_loader,
             trader_gru_model,
             loss_function,
@@ -79,12 +78,13 @@ def train(
 
         torch.save(trader_gru_model.state_dict(), args.save + "/latest_model.pt")
 
-        # TODO: Average is not a good indicator. What if at one
-
         avg_losses_epoch_train = sum(losses_epoch_train).cpu().detach().numpy() / float(len(losses_epoch_train))
         avg_losses_epoch_valid = sum(losses_epoch_valid).cpu().detach().numpy() / float(len(losses_epoch_valid))
-        average_epoch_losses_train.append(avg_losses_epoch_train)
-        average_epoch_losses_valid.append(avg_losses_epoch_valid)
+
+        avg_losses_epoch_train_without_penalty = sum(losess_without_penalty_train).cpu().detach().numpy() / float(
+            len(losess_without_penalty_train))
+        avg_losses_epoch_valid_without_penalty = sum(losess_without_penalty_valid).cpu().detach().numpy() / float(
+            len(losess_without_penalty_valid))
 
         # Early Stopping
         if epoch == 0:
@@ -117,38 +117,46 @@ def train(
                 np.around([cur_time - pre_time], decimals=2),
                 is_best_model)
         )
+
+        if args.add_penalties:
+            print(f'train_loss_without_penalty: {avg_losses_epoch_train_without_penalty}, '
+                  f'valid_loss_without_penalty: {avg_losses_epoch_valid_without_penalty}')
         pre_time = cur_time
 
 
 def _validate(valid_loader, trader_gru_model, loss_function, batch_size):
     losses_epoch_valid = []
+    losses_epoch_valid_without_penalty = []
     for features_val, original_sequence_lengths_val, is_premarket in valid_loader:
         if features_val.shape[0] != batch_size:
             continue
 
-        trades = get_trades_from_model(
+        trades, action_penalties = get_trades_from_model(
             features=features_val,
             model=trader_gru_model
         )
 
         open_prices = features_val[:, :, 0]
-        loss_val = compute_loss(
+        loss_val, loss_valid_without_penalty = compute_loss(
             loss_function=loss_function,
             trades=trades,
             open_prices=open_prices,
+            action_penalties=action_penalties,
             original_sequence_lengths=original_sequence_lengths_val,
             is_premarket=is_premarket,
-            multiply=args.multiply
+            multiply=args.multiply,
         )
 
         if args.multiply:
             loss_val = -(torch.exp(-loss_val) - 1)
         losses_epoch_valid.append(loss_val)
-    return losses_epoch_valid
+        losses_epoch_valid_without_penalty.append(loss_valid_without_penalty)
+    return losses_epoch_valid, losses_epoch_valid_without_penalty
 
 
 def _train(train_loader, trader_gru_model, loss_function, optimizer, batch_size):
     losses_epoch_train = []
+    losses_epoch_train_without_penalty = []
     for features, original_sequence_lengths, is_premarket in train_loader:
         features  # shape: batch_size x sequence_length x feature_length
         original_sequence_lengths  # shape: batch_size
@@ -156,20 +164,24 @@ def _train(train_loader, trader_gru_model, loss_function, optimizer, batch_size)
         if features.shape[0] != batch_size:
             continue
 
-        trades = get_trades_from_model(
+        trades, action_penalties = get_trades_from_model(
             features=features,
             model=trader_gru_model
-        )  # shape: batch_size x sequence_length
+        )
+
+        trades  # shape: batch_size x sequence_length
+        action_penalties  # shape: batch_size x 1
 
         open_prices = features[:, :, OPEN_COLUMN_INDEX]
 
-        loss_train = compute_loss(
+        loss_train, loss_train_without_penalty = compute_loss(
             loss_function=loss_function,
             trades=trades,
             open_prices=open_prices,
             original_sequence_lengths=original_sequence_lengths,
+            action_penalties=action_penalties,
             is_premarket=is_premarket,
-            multiply=args.multiply
+            multiply=args.multiply,
         )
 
         trader_gru_model.zero_grad()
@@ -179,7 +191,8 @@ def _train(train_loader, trader_gru_model, loss_function, optimizer, batch_size)
         if args.multiply:
             loss_train = -(torch.exp(-loss_train) - 1)
         losses_epoch_train.append(loss_train)
-    return losses_epoch_train
+        losses_epoch_train_without_penalty.append(loss_train_without_penalty)
+    return losses_epoch_train, losses_epoch_train_without_penalty
 
 
 def compute_loss(
@@ -187,46 +200,76 @@ def compute_loss(
         trades,  # batch_size x seq_len
         open_prices,  # batch_size x seq_len
         original_sequence_lengths,  # batch_size
+        action_penalties,  # batch_size
         is_premarket=None,
         multiply=False
 ):
+    """
+    Return a tuple:
+        - First index is the loss with penalty
+        - Second index is the loss without penalty. Used mostly for logging purposes
+    """
     num_sequences = 0
     losses = []
+    losses_without_penalty = []  # mostly used for logging
     for batch_index, osl in enumerate(original_sequence_lengths):
         # BUG: Sometimes osl is 0
         if osl <= 1:
             continue
-        current_outputs = trades[batch_index, 0: osl].float()
-        current_prices = open_prices[batch_index, 0: osl].float()
-        current_is_premarket = is_premarket[batch_index, 0: osl].float()
-        # TODO: What if at some day we lose 100% of our capital??
-        current_loss = loss_function(
-            current_outputs,
-            current_prices,
-            current_is_premarket,
-            args.next_trade
+
+        current_batch_trades = trades[batch_index, 0: osl].float()
+        current_batch_prices = open_prices[batch_index, 0: osl].float()
+        current_batch_is_premarket = is_premarket[batch_index, 0: osl].float()
+
+        if args.add_penalties:
+            current_batch_penalty = action_penalties[batch_index].float()
+        else:
+            current_batch_penalty = 0
+
+        current_batch_loss = loss_function(
+            current_batch_trades,
+            current_batch_prices,
+            current_batch_is_premarket,
         )
-        losses.append(current_loss)
+
+        losses.append(current_batch_loss + current_batch_penalty)
+        losses_without_penalty.append(current_batch_loss)
         num_sequences += 1
+
     if multiply:
-        eps = 1e-15
-        logsum = 0
-        for loss in losses:
-            change = -loss + 1  # change is in range [0, inf]
-            log_change = torch.log(change + eps)
-            logsum += log_change
-        total_loss = -logsum
+        total_loss = _reduce_loss_multiply(losses)
+        total_loss_without_penalty = _reduce_loss_multiply(losses)
     else:
-        total_loss = 0
-        for loss in losses:
-            total_loss += loss
-        total_loss /= float(num_sequences)
+        total_loss = _average_loss(losses, num_sequences)
+        total_loss_without_penalty = _average_loss(losses_without_penalty, num_sequences)
+    return total_loss, total_loss_without_penalty
+
+
+def _average_loss(losses, num_sequences):
+    total_loss = 0
+    for loss in losses:
+        total_loss += loss
+    total_loss /= float(num_sequences)
+    return total_loss
+
+
+def _reduce_loss_multiply(losses):
+    """
+    if args.multiply is True, this function will be called to reduce the losses from the sample in the batch
+    """
+    eps = 1e-15
+    logsum = 0
+    for loss in losses:
+        change = -loss + 1  # change is in range [0, inf]
+        log_change = torch.log(change + eps)
+        logsum += log_change
+    total_loss = -logsum
     return total_loss
 
 
 def get_trades_from_model(
         features,  # size: batch_size x sequence_length x feature_length
-        model  # type: TraderGRU
+        model,  # type: TraderGRU
 ):
     use_gpu = torch.cuda.is_available()
     features = features.float()
@@ -240,9 +283,10 @@ def get_trades_from_model(
     else:
         normalized_features = Variable(normalized_features)
 
-    trades = model(normalized_features)  # batch_size x sequence_length
+    trades = model(normalized_features, args.add_penalties)  # batch_size x sequence_length
 
-    return trades
+    # Note: if args.add_penalties is False, model.action_penalties is empty
+    return trades, model.action_penalties
 
 
 if __name__ == "__main__":
@@ -252,13 +296,13 @@ if __name__ == "__main__":
         torch.cuda.set_device(args.gpu)
 
     train_data = TraderGRUDataSet(
-        data_folder=F'{DATA_DIR}/alpaca_gaped_up_stocks_early_volume_1e5_gap_10',
+        data_folder=F'{DATA_DIR}/{args.dataset_name}',
         split='train',
         should_add_technical_indicator=True
     )
 
     test_data = TraderGRUDataSet(
-        data_folder=f'{DATA_DIR}/alpaca_gaped_up_stocks_early_volume_1e5_gap_10',
+        data_folder=F'{DATA_DIR}/{args.dataset_name}',
         split='valid',
         should_add_technical_indicator=True
     )
@@ -274,17 +318,17 @@ if __name__ == "__main__":
     model = TraderGRU(
         input_size=num_features,
         hidden_size=5 * num_features,
-        sparse=args.sparse
+        sparse=args.sparse,
     )
 
     # Create directories
     if args.load:
-        model_path = os.path.join('runs', args.load, 'best_model.pt')
+        model_path = os.path.join(EXPERIMENT_ROOT_DIR, 'runs', args.load, 'best_model.pt')
         model.load_state_dict(torch.load(model_path,
                                          map_location=lambda storage, loc: storage))
 
     args.save = '{}-{}'.format(args.save, time.strftime("%Y%m%d-%H%M%S"))
-    args.save = os.path.join('runs', args.save)
+    args.save = os.path.join(EXPERIMENT_ROOT_DIR, 'runs', args.save)
     create_dir(args.save)
 
     if torch.cuda.is_available():
